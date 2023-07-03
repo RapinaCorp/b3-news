@@ -79,8 +79,8 @@ let fetchAndFilterNews (tickers: string list) (d1: string) (d2: string) =
         match result with
         | Ok nwsMsgs -> 
             let filteredNews = List.map (fun el -> el.NwsMsg) nwsMsgs |> filterNews tickers
-            printfn "- %d fatos relevantes no período" nwsMsgs.Length
-            printfn "- %d itens filtrados" filteredNews.Length
+            sprintf "- %d fatos relevantes no período" nwsMsgs.Length |> Log.info
+            sprintf "- %d itens filtrados\n" filteredNews.Length |> Log.info
             return Ok(filteredNews)
         | Error errorMessage -> return Error errorMessage
     }

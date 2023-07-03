@@ -7,7 +7,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Log.fs" />
     <Compile Include="Download.fs" />
+    <Compile Include="Config.fs" />
     <Compile Include="Lib.fs" />
     <Compile Include="HaskellInterop.fs" />
     <Compile Include="News.fs" />

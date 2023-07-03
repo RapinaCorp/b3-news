@@ -14,8 +14,6 @@ let patternEnet = "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.as
 /// Custom operator for combining paths
 let (+/) path1 path2 = Path.Combine (path1, path2)
 
-
-
 let fnetURL (url: string) : string option =
     let pattern = patternFnet
     let urlMatch = Regex.Match(url, pattern).Groups.[1].Value
