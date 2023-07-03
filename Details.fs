@@ -6,14 +6,13 @@ open System.Text.RegularExpressions
 
 open Lib
 open News
-open HaskellInterop
 
 type NewsDetail =
     { ticker: string
       filename: string
       url: string }
 
-let getDetails (newsID: string) (agency: string) (dt: string) =
+let fetchDetails (newsID: string) (agency: string) (dt: string) =
     async {
         let url =
             "https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail?idNoticia="
@@ -39,7 +38,8 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
         let nid = string (nwsmsg.id)
         let nidAgencia = string (nwsmsg.IdAgencia)
         let ndateTime = nwsmsg.dateTime
-        let! details = getDetails nid nidAgencia ndateTime
+        
+        let! details = fetchDetails nid nidAgencia ndateTime
         let status = details.StatusCode
         let code = int status
         let msg = status.ToString()
@@ -69,7 +69,7 @@ let transform (f: 'a -> Async<Result<'b, string>>) (list: 'a list) : Result<'b l
     sequenceResults [] list
 
 
-let fetchNewsFiles (codes: string list) (d1: string) (d2: string) : Result<NewsDetail list, string> =
+let fetchNewsDetails (codes: string list) (d1: string) (d2: string) : Result<NewsDetail list, string> =
     let result = News.fetchAndFilterNews codes d1 d2
 
     match result with

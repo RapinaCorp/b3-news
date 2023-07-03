@@ -59,13 +59,13 @@ let filterNews (tickers: string list) (nwsmsgs: NwsMsg list) =
         (fun nwsmsg ->
             let ticker = getTicker nwsmsg.headline
             if tickers |> List.exists (fun ticker' -> ticker = ticker'.ToUpper()) then
-                Some { nwsmsg with ticker = Some ticker } // Add ticker to nwsmsg
+                Some { nwsmsg with ticker = Some ticker } // Add ticker code to nwsmsg
             else
                 None)
         nwsmsgs
     |> List.sortBy (fun nwsmsg -> nwsmsg.ticker)
 
-let fetchAndFilterNews (tickers: string list) (d1: string) (d2: string) =
+let fetchAndFilterNews (tickers: string list) (d1: string) (d2: string) : Async<Result<list<NwsMsg>, string>> =
     async {
         let d1', d2' =
             match d1, d2 with

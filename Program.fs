@@ -3,14 +3,14 @@ open System.Reflection
 
 let exeName = Assembly.GetEntryAssembly().GetName().Name
 
-let download ticker filename url =
-    match Download.downloadAndSaveFile ticker filename url with
+let download (d: Details.NewsDetail) =
+    match Download.downloadAndSaveFile d.ticker d.filename d.url with
     | Ok filename -> printfn "=> %s" filename
-    | Error err ->   printfn "x  Erro: %s | %s" err filename
+    | Error err ->   printfn "x  Erro: %s | %s" err d.filename
 
 let run codes d1 d2 =
-    match Details.fetchNewsFiles codes d1 d2 with
-    | Ok urls -> urls |> List.iter (fun nf -> download nf.ticker nf.filename nf.url) |> Ok
+    match Details.fetchNewsDetails codes d1 d2 with
+    | Ok details -> details |> List.iter (fun detail -> download detail) |> Ok
     | Error e -> Error e
 
 [<EntryPoint>]
