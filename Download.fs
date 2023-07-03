@@ -76,7 +76,7 @@ let strcasestr (pattern: string) (bytes: byte[]) : bool =
 
 let removeQuotes (body: string) : string =
     if body.StartsWith("\"") && body.EndsWith("\"") then 
-        body[(min 1 body.Length)..(max 0 body.Length-2)] // remove quotes from "body" 
+        body[1..(max 1 body.Length-2)] // remove quotes from "body" 
     else 
         body 
 
