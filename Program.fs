@@ -3,14 +3,16 @@ open System.Reflection
 
 let exeName = Assembly.GetEntryAssembly().GetName().Name
 
-let download (d: Details.NewsDetail) =
-    match Download.downloadAndSaveFile d.ticker d.filename d.url with
+let download folderName (d: Details.NewsDetail) =
+    match Download.downloadAndSaveFile (folderName d.filename) d.filename d.url with
     | Ok filename -> printfn "=> %s" filename
     | Error err ->   printfn "x  Erro: %s | %s" err d.filename
 
 let run codes d1 d2 =
+    let pe = Predicitions.setPrediction @"B3NewsModel.zip"
+    let folderName = Predicitions.predictFolder pe
     match Details.fetchNewsDetails codes d1 d2 with
-    | Ok details -> details |> List.iter (fun detail -> download detail) |> Ok
+    | Ok details -> details |> List.iter (download folderName) |> Ok
     | Error e -> Error e
 
 [<EntryPoint>]

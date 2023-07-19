@@ -7,7 +7,7 @@ open System.IO
 
 open Thoth.Json.Net
 
-let outputDir = "report"
+let _outputDir = "report"
 let patternFnet = "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento\\?id=([0-9]+)"
 let patternEnet = "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
 
@@ -93,8 +93,8 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
     async {
         try
             let decoded = removeQuotes body |> Convert.FromBase64String
-            System.IO.Directory.CreateDirectory (outputDir +/ folder) |> ignore
-            let filePath = outputDir +/ folder +/ (filename + ext decoded)
+            System.IO.Directory.CreateDirectory (_outputDir +/ folder) |> ignore
+            let filePath = _outputDir +/ folder +/ (filename + ext decoded)
             use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
             do! fileStream.WriteAsync(decoded, 0, decoded.Length) |> Async.AwaitTask
             return Ok filePath
@@ -114,11 +114,11 @@ let getBody (url: string) =
             | _ -> return Error $"erro na URL {url}"
     }
 
-let downloadAndSaveFile ticker filename url : Result<string,string> =
+let downloadAndSaveFile folder filename url : Result<string,string> =
     async {
         let! bodyResult = getBody url
         match bodyResult with
         | Error err -> return Error err
-        | Ok body -> return! save ticker filename body
+        | Ok body -> return! save folder filename body
     } 
     |> Async.RunSynchronously

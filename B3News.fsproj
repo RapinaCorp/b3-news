@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Log.fs" />
+    <Compile Include="Predictions.fs" />
     <Compile Include="Download.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="Lib.fs" />
@@ -18,5 +19,6 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Thoth.Json.Net" Version="11.0.0" />
+    <PackageReference Include="Microsoft.ML" Version="3.0.0-preview.22621.2" />
   </ItemGroup>
 </Project>
