@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <RootNamespace>B3News</RootNamespace>
     <OutputType>Exe</OutputType>
     <TargetFramework>net7.0</TargetFramework>
     <PublishSingleFile>true</PublishSingleFile>
@@ -20,5 +21,8 @@
     <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Thoth.Json.Net" Version="11.0.0" />
     <PackageReference Include="Microsoft.ML" Version="3.0.0-preview.22621.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ML/data/B3NewsModel.zip" />
   </ItemGroup>
 </Project>

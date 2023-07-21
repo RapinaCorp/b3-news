@@ -9,7 +9,7 @@ let download folderName (d: Details.NewsDetail) =
     | Error err ->   printfn "x  Erro: %s | %s" err d.filename
 
 let run codes d1 d2 =
-    let pe = Predicitions.setPrediction @"B3NewsModel.zip"
+    let pe = Predicitions.setPrediction
     let folderName = Predicitions.predictFolder pe
     match Details.fetchNewsDetails codes d1 d2 with
     | Ok details -> details |> List.iter (download folderName) |> Ok

@@ -4,6 +4,9 @@ obj
 *.pdf
 *.html
 report/*
+*.zip
+!testdata.txt
+!traindata.txt
 
 release/bin
 release/bin_ff
