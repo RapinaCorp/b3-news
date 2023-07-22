@@ -50,7 +50,7 @@ let trainTestData (ctx: MLContext) =
     ctx.Data.TrainTestSplit(trainingDataView', testFraction = 0.2, seed = 1)
 
 // STEP 2: Common data process configuration with pipeline data transformations
-let dataProcessPipeline (ctx: MLContext) =
+let buildDataProcessingPipeline (ctx: MLContext) =
     EstimatorChain()
         .Append(ctx.Transforms.Conversion.MapValueToKey("Label", "Label"))
         .Append(ctx.Transforms.Text.FeaturizeText("Features", "Filename"))
@@ -58,20 +58,36 @@ let dataProcessPipeline (ctx: MLContext) =
     |> downcastPipeline
 
 // STEP 3: Create the selected training algorithm/trainer
-//mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features")
-let trainer (ctx: MLContext) =
+let sdcaNonCalibratedTrainer (ctx: MLContext) =
     ctx.MulticlassClassification.Trainers.SdcaNonCalibrated(labelColumnName = "Label", featureColumnName = "Features")
     |> downcastPipeline
 
+let sdcaMaximumEntropyTrainer (ctx: MLContext) =
+    ctx.MulticlassClassification.Trainers.SdcaMaximumEntropy(labelColumnName = "Label", featureColumnName = "Features")
+    |> downcastPipeline
+
+let lbfgsMaximumEntropyTrainer (ctx: MLContext) =
+    ctx.MulticlassClassification.Trainers.LbfgsMaximumEntropy(labelColumnName = "Label", featureColumnName = "Features")
+    |> downcastPipeline
+
+let naiveBayesTrainer (ctx: MLContext) =
+    ctx.MulticlassClassification.Trainers.NaiveBayes(labelColumnName = "Label", featureColumnName = "Features")
+    |> downcastPipeline
+
 //Set the trainer/algorithm
-let modelBuilder (ctx: MLContext) (trainer: IEstimator<ITransformer>) =
-    dataProcessPipeline(ctx)
+let buildTrainingPipeline (ctx: MLContext) (trainer: IEstimator<ITransformer>) =
+    buildDataProcessingPipeline(ctx)
         .Append(trainer)
         .Append(ctx.Transforms.Conversion.MapKeyToValue("PredictedLabel"))
 
 // STEP 4: Cross-Validate with single dataset (since we don't have two datasets, one for training and for evaluate)
 // in order to evaluate and get the model's accuracy metrics
-let crossValidationResults (ctx: MLContext) (trainTestSplit: DataOperationsCatalog.TrainTestData) estimator algorithmName =
+let crossValidationResults
+    (ctx: MLContext)
+    (trainTestSplit: DataOperationsCatalog.TrainTestData)
+    estimator
+    algorithmName
+    =
     printfn "=============== Cross-validating to get model's accuracy metrics ==============="
     ctx.MulticlassClassification.CrossValidate(
         data = trainTestSplit.TestSet,
@@ -115,18 +131,28 @@ let testPrediction (ctx: MLContext) (trainedModel: ITransformer) (trainTestSplit
 let saveModel (ctx: MLContext) trainedModel schema =
     ctx.Model.Save(trainedModel, schema, "data" +/ "B3NewsModel.zip")
 
-
-
 // Create MLContext to be shared across the model creation workflow objects
 // Set a random seed for repeatable/deterministic results across multiple trainings.
 let mlContext = MLContext(seed = 0)
 
 let data = trainTestData mlContext
-let estimator = trainer mlContext
-let estimatorChain = modelBuilder mlContext estimator
 
-crossValidationResults mlContext data estimatorChain "train.ToString()"
+let trainer = sdcaNonCalibratedTrainer mlContext
+let trainingPipeline = buildTrainingPipeline mlContext trainer
+crossValidationResults mlContext data trainingPipeline (trainer.ToString())
 
-let trainedModel = trainModel data estimatorChain
+let trainer2 = sdcaMaximumEntropyTrainer mlContext
+let trainingPipeline2 = buildTrainingPipeline mlContext trainer2
+crossValidationResults mlContext data trainingPipeline2 (trainer2.ToString())
+
+let trainer3 = lbfgsMaximumEntropyTrainer mlContext
+let trainingPipeline3 = buildTrainingPipeline mlContext trainer3
+crossValidationResults mlContext data trainingPipeline3 (trainer3.ToString())
+
+let trainer4 = naiveBayesTrainer mlContext
+let trainingPipeline4 = buildTrainingPipeline mlContext trainer4
+crossValidationResults mlContext data trainingPipeline4 (trainer4.ToString())
+
+let trainedModel = trainModel data trainingPipeline
 
 testPrediction mlContext trainedModel data
