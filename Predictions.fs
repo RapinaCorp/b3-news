@@ -21,6 +21,7 @@ let convert term =
             [ "age", "AGE"
               "aviso", "AVISOS"
               "dfp", "DFP"
+              "laudo", "LAUDOS"
               "distrib", "RENDIMENTOS"
               "eventos", "EVENTOS"
               "fr", "FATO_RELEVANTE"
@@ -33,9 +34,11 @@ let convert term =
               "relat", "RELATÓRIOS_GERENCIAIS"
               "rentab", "RENTABILIDADE"
               "reuniao", "REUNIÕES"
-              "trimestral", "RELAT_TRIMESTRAL" ]
+              "trim", "RELAT_TRIMESTRAL" ]
 
-    conversionTable.[term]
+    match conversionTable.TryGetValue(term) with
+    | (true, v) -> v
+    | _ -> "OUTROS"
 
 let listResources () =
     printfn "%A" (Assembly.GetExecutingAssembly().GetManifestResourceNames())
