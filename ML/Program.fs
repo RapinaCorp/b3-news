@@ -2,6 +2,7 @@
 open Microsoft.ML.Data
 open Microsoft.ML.Trainers
 open Microsoft.Data.Analysis
+open Microsoft.ML.AutoML
 
 let PrintMetrics (metrics: MulticlassClassificationMetrics) =
     printfn "Micro Accuracy: %.2f" metrics.MicroAccuracy
@@ -89,14 +90,17 @@ let crossValidationResults
     algorithmName
     =
     printfn "=============== Cross-validating to get model's accuracy metrics ==============="
-    ctx.MulticlassClassification.CrossValidate(
-        data = trainTestSplit.TestSet,
-        estimator = downcastPipeline estimator,
-        numberOfFolds = 6,
-        labelColumnName = "Label"
-    )
-    |> Seq.toArray
-    |> Lib.printMulticlassClassificationFoldsAverageMetrics algorithmName
+    let results =
+        ctx.MulticlassClassification.CrossValidate(
+            data = trainTestSplit.TestSet,
+            estimator = downcastPipeline estimator,
+            numberOfFolds = 6,
+            labelColumnName = "Label"
+        )
+        |> Seq.toArray
+
+    Lib.printMulticlassClassificationFoldsAverageMetrics algorithmName results
+    results
 
 // STEP 5: Train the model fitting to the DataSet
 let trainModel
@@ -110,9 +114,9 @@ let trainModel
 let testPrediction (ctx: MLContext) (trainedModel: ITransformer) (trainTestSplit: DataOperationsCatalog.TrainTestData) =
     printfn "\n=============== Testing the model ==============="
     let predictionIDV = trainedModel.Transform trainTestSplit.TestSet
-    let columnsToSelect = [| "Filename"; "PredictedLabel" |]
-    predictionIDV.ToDataFrame(columnsToSelect).Rows
-    |> Seq.iter (fun row -> printfn "%-10s %s" (row.[1].ToString()) (row.[0].ToString()))
+    // let columnsToSelect = [| "Filename"; "PredictedLabel" |]
+    // predictionIDV.ToDataFrame(columnsToSelect).Rows
+    // |> Seq.iter (fun row -> printfn "%-10s %s" (row.[1].ToString()) (row.[0].ToString()))
 
     // Evaluate the model
     let metrics = ctx.MulticlassClassification.Evaluate(predictionIDV)
@@ -128,8 +132,8 @@ let testPrediction (ctx: MLContext) (trainedModel: ITransformer) (trainTestSplit
     PrintMetrics(metrics)
 
 // STEP 7: Save the model
-let saveModel (ctx: MLContext) trainedModel schema =
-    ctx.Model.Save(trainedModel, schema, "data" +/ "B3NewsModel.zip")
+let saveModel (ctx: MLContext) trainedModel schema (filename: string) =
+    ctx.Model.Save(trainedModel, schema, filename)
 
 // Create MLContext to be shared across the model creation workflow objects
 // Set a random seed for repeatable/deterministic results across multiple trainings.
@@ -137,22 +141,53 @@ let mlContext = MLContext(seed = 0)
 
 let data = trainTestData mlContext
 
+let listOfTrainers =
+    [ sdcaNonCalibratedTrainer
+      sdcaMaximumEntropyTrainer
+      lbfgsMaximumEntropyTrainer
+      naiveBayesTrainer ]
+
+let executeTrainers1 context functionList =
+    List.fold
+        (fun acc f ->
+            let trainer = f context
+            let trainingPipeline = buildTrainingPipeline mlContext trainer
+            let results =
+                crossValidationResults mlContext data trainingPipeline (trainer.ToString())
+            (trainer, trainingPipeline, results) :: acc)
+        []
+        functionList
+    |> List.rev
+
+executeTrainers1 mlContext listOfTrainers |> List.iter (printfn "%A")
+
 let trainer = sdcaNonCalibratedTrainer mlContext
 let trainingPipeline = buildTrainingPipeline mlContext trainer
-crossValidationResults mlContext data trainingPipeline (trainer.ToString())
-
-let trainer2 = sdcaMaximumEntropyTrainer mlContext
-let trainingPipeline2 = buildTrainingPipeline mlContext trainer2
-crossValidationResults mlContext data trainingPipeline2 (trainer2.ToString())
-
-let trainer3 = lbfgsMaximumEntropyTrainer mlContext
-let trainingPipeline3 = buildTrainingPipeline mlContext trainer3
-crossValidationResults mlContext data trainingPipeline3 (trainer3.ToString())
-
-let trainer4 = naiveBayesTrainer mlContext
-let trainingPipeline4 = buildTrainingPipeline mlContext trainer4
-crossValidationResults mlContext data trainingPipeline4 (trainer4.ToString())
+// crossValidationResults mlContext data trainingPipeline (trainer.ToString())
 
 let trainedModel = trainModel data trainingPipeline
 
 testPrediction mlContext trainedModel data
+
+printfn "_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_"
+(*
+// Set up the AutoML experiment to find the best algorithm
+let experiment =
+    mlContext
+        .Auto()
+        .CreateMulticlassClassificationExperiment(maxExperimentTimeInSeconds = (uint32 60))
+
+// Run the experiment to find the best algorithm
+let crossValidationResults' = experiment.Execute(data.TrainSet, "Label", "Features")
+
+// Get the best model from the experiment
+let bestModel = crossValidationResults'.BestRun.Model
+let trainerName = crossValidationResults'.BestRun.TrainerName
+
+printfn "%s\n" trainerName
+testPrediction mlContext bestModel data
+
+saveModel mlContext bestModel data.TrainSet.Schema ("data" +/ "B3NewsModel.zip")
+*)
+
+saveModel mlContext trainedModel data.TrainSet.Schema ("data" +/ "B3NewsModel.zip")
