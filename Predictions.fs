@@ -21,20 +21,21 @@ let convert term =
             [ "age", "AGE"
               "aviso", "AVISOS"
               "dfp", "DFP"
+              "emissao", "EMISSÕES"
               "laudo", "LAUDOS"
               "distrib", "RENDIMENTOS"
               "eventos", "EVENTOS"
-              "fr", "FATO_RELEVANTE"
-              "mensal", "RELAT_MENSAL"
+              "fr", "FATOS_RELEVANTES"
+              "mensal", "RELAT_MENSAIS"
               "outros", "OUTROS"
               "pos", "POSIÇÕES"
               "ppt", "APRESENTAÇÕES"
               "qa", "QUESTIONAMENTOS"
-              "reg", "REGIMENTO"
+              "reg", "REGIMENTOS"
               "relat", "RELATÓRIOS_GERENCIAIS"
-              "rentab", "RENTABILIDADE"
+              "rentab", "RENTABILIDADES"
               "reuniao", "REUNIÕES"
-              "trim", "RELAT_TRIMESTRAL" ]
+              "trim", "RELAT_TRIMESTRAIS" ]
 
     match conversionTable.TryGetValue(term) with
     | (true, v) -> v

@@ -24,3 +24,18 @@ let safeFilename (filename : string) : string option =
         let fn = filename |> String.map safe |> removeExtra_ |> removeLast_
         if not (String.IsNullOrEmpty fn) then Some(fn) else None
 
+// Function to list all files recursively from a given path
+let rec filesFromDir (path: string) : seq<string> =
+    seq {
+        // Get all the files in the current directory
+        for file in System.IO.Directory.GetFiles(path) do
+            yield file
+
+        // Recursively get files from all subdirectories
+        for subdir in System.IO.Directory.GetDirectories(path) do
+            yield! filesFromDir subdir
+    }
+
+let createDir (directoryPath: string) =
+    if not (System.IO.Directory.Exists(directoryPath)) then
+        System.IO.Directory.CreateDirectory(directoryPath) |> ignore

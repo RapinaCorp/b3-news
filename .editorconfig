@@ -1,8 +1,13 @@
+[*.tsv]
+indent_style = tab
+tab_width = 8
+  
 [*.fs]
 fsharp_space_before_uppercase_invocation = false
 fsharp_blank_lines_around_nested_multiline_expressions = false
 fsharp_keep_max_number_of_blank_lines = 1
 
+# fsharp_multiline_bracket_style = aligned
 # fsharp_max_if_then_else_short_width = 50
 # fsharp_max_function_binding_width = 50
 # fsharp_align_function_signature_to_indentation = true
