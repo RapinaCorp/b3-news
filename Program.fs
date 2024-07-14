@@ -1,18 +1,26 @@
 ﻿open System
+open System.IO
 open System.Reflection
 
+let (+/) path1 path2 = Path.Combine(path1, path2)
 let exeName = Assembly.GetEntryAssembly().GetName().Name
-let download folderName (d: Details.NewsDetail) =
+
+let download folderName (d: Details.NewsDetail) : Option<string * string> =
     match Download.downloadAndSaveFile (folderName d.filename) d.filename d.url with
-    | Ok filename -> printfn "=> %s" filename
-    | Error err -> printfn "x  Erro: %s | %s" err d.filename
+    | Ok filename -> printfn "=> %s" filename; Some (d.ticker, filename)
+    | Error err -> printfn "x  Erro: %s | %s" err d.filename; None
 
 let run codes d1 d2 =
     let pe = Predicitions.setPrediction
     let folderName = Predicitions.predictFolder pe
 
     match Details.fetchNewsDetails codes d1 d2 with
-    | Ok details -> details |> List.iter (download folderName) |> Ok
+    | Ok details ->
+        details 
+        |> List.map (download folderName) 
+        |> List.choose id 
+        |> List.createIndexHtml
+        |> Ok
     | Error e -> Error e
 
 [<EntryPoint>]
