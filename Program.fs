@@ -2,7 +2,6 @@
 open System.IO
 open System.Reflection
 
-let (+/) path1 path2 = Path.Combine(path1, path2)
 let exeName = Assembly.GetEntryAssembly().GetName().Name
 
 let download folderName (d: Details.NewsDetail) : Option<string * string> =
@@ -19,7 +18,7 @@ let run codes d1 d2 =
         details 
         |> List.map (download folderName) 
         |> List.choose id 
-        |> List.createIndexHtml
+        |> Download.saveFileList
         |> Ok
     | Error e -> Error e
 
@@ -30,6 +29,10 @@ let main args =
         printfn "Uso: ou %s AAAA-MM-DD AAAA-MM-DD" exeName
         printfn "     e os códigos das empresas em b3news.cfg, um código por linha,"
         printfn "     sem os números. Ex.: PETR em vez de PETR4.\n"
+        printfn "Uso: %s fix" exeName
+        printfn "     corrigir a classificação dos arquivos na pasta de saída."
+        printfn "Uso: %s index" exeName
+        printfn "     criar o arquivo index.html."
         Environment.Exit 0
 
     let d1 = args.[0]
@@ -39,8 +42,9 @@ let main args =
         Environment.Exit 0
 
     if d1 = "index" then
-        let d2 = if args.Length >= 2 then args.[1] else "."
-        List.printHtml d2
+        match Download.loadFileList with
+        | Some filelist -> List.createIndexHtml filelist
+        | None -> printfn "x  Não foi possível carregar o arquivo de índice."
         Environment.Exit 0
 
     let d2 = if args.Length >= 2 then args.[1] else args.[0]

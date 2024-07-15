@@ -3,6 +3,7 @@ obj
 *.txt
 *.pdf
 *.html
+!index_template.html
 report/*
 *.zip
 !testdata.txt

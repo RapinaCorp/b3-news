@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦅</text></svg>">
+  <title>Visualizador de Arquivos</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+
+    .sidebar {
+      background-color: #f1f1f1;
+      padding: 0 0 40px 20px;
+      width: 300px;
+      overflow: hidden;
+      overflow-y: auto;
+    }
+
+    .content {
+      flex-grow: 1;
+      padding: 20px;
+    }
+
+    #file-viewer {
+      border: none;
+      height: 100%;
+      width: 100%;
+    }
+
+    p.title {
+      margin: 16px 0 10px -20px;
+      padding: 2px 10px;
+      background-color: rgba(255,165,0,.5);
+      border-radius: 0 20px 20px 0;
+      line-height: 1.5em;
+    } 
+
+    p:has(> a) {
+      margin: 0;
+    }
+
+    small {
+      font-family: Tahoma, Geneva, sans-serif;
+      font-size: 10px;
+      padding: 0;
+    }
+
+    .date {
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    a {
+      color: darkblue;
+    }
+
+    a:link {
+      text-decoration: none;
+    }
+
+    a.visited {
+      color: #946fb6;
+    }
+
+    a.active::before {
+      content: "🡆";
+      padding-right: 2px;
+      vertical-align: middle;
+    }
+
+    a.active {
+      color: orangered;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h2>Arquivos</h2>
+      <div id="file-list"></div>
+    </div>
+    <div class="content" id="content-area">
+      <iframe id="file-viewer"></iframe>
+    </div>
+  </div>
+
+  <script>
+    // Get the list of visited links from storage
+    let visitedLinks = JSON.parse(localStorage.getItem('visitedLinks')) || [];
+    // Dados dos arquivos
+    const files = [
+{content}
+    ];
+
+    let lastLink = {};
+
+    // Função para exibir a lista de arquivos
+    function displayFileList() {
+      const fileList = document.getElementById('file-list');
+      let lastFile = '';
+      let lastDate = '';
+      files.forEach((file) => {
+        const filename = file.url.replace(/^.*[\\/]/, '');
+        if (lastFile!= file.name) {
+          lastFile = file.name;
+          const p = document.createElement('p');
+          p.className = 'title';
+          p.innerHTML = '<b>' + file.name + '</b>';
+          fileList.appendChild(p);
+        }
+        let date = filename.substring(0,10); 
+        if (lastDate!= date) {
+          lastDate = date;
+          const p = document.createElement('p');
+          p.className = 'date';
+          p.textContent = date;
+          fileList.appendChild(p);
+        }
+        const p = document.createElement('p');
+        const link = document.createElement('a');
+        if (visitedLinks.includes(file.url)) {
+          link.classList.add('visited');
+        }
+        link.href = '#';
+        link.innerHTML = '<small>'+ filename.substring(20) + '</small>';
+        link.addEventListener('click', () => {
+          visitedLinks.push(file.url);
+          localStorage.setItem('visitedLinks', JSON.stringify(visitedLinks));
+          link.classList.add('visited');
+          link.classList.add('active');
+          if (lastLink && lastLink.classList) lastLink.classList.remove('active');
+          lastLink = link;
+          loadFile(file.url);
+        });
+        p.appendChild(link);
+        fileList.appendChild(p);
+      });
+    }
+
+    // Função para carregar o conteúdo do arquivo selecionado
+    function loadFile(url) {
+      const fileViewer = document.getElementById('file-viewer');
+      fileViewer.src = url;
+    }
+
+    // Inicializar a aplicação
+    displayFileList();
+  </script>
+</body>
+</html>
