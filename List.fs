@@ -107,3 +107,5 @@ let createIndexHtml (files: (string * string) list) =
         |> List.sortBy fst
         |> List.map (fun (ticker, filename) -> sprintf "  {name: '%s', url: '%s'}," ticker (filename.Replace("\\", "/")))
         |> (fun lines -> fprintf outfile "%s" (template.Value.Replace("{content}", String.concat "\n" lines)))
+    else
+        Log.error "Template not found"

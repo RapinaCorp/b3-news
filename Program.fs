@@ -50,8 +50,10 @@ let main args =
         Environment.Exit 0
 
     let createIndex () =
-        match Download.loadFileList with
-        | Some filelist -> List.createIndexHtml filelist; Log.notice "- index.html criado."
+        match Download.readFileList () with
+        | Some filelist -> 
+            List.createIndexHtml filelist
+            Log.notice "- index.html criado."
         | None -> Log.error "Não foi possível carregar o arquivo de índice."
 
     if d1 = "index" then createIndex (); Environment.Exit 0

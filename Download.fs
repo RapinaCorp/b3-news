@@ -146,21 +146,36 @@ let saveFileList (filelist: List<string * string>) =
     if not (Directory.Exists(directory)) then
         Directory.CreateDirectory(directory) |> ignore
 
-    filelist
-    |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
-    |> fun lines ->
-       if File.Exists(filesListFilename) then
-           File.AppendAllLines(filesListFilename, lines)
-       else
-           File.WriteAllLines(filesListFilename, lines)
+    try
+        let lines = filelist |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
 
-let loadFileList: Option<List<string * string>> =
-    if File.Exists(filesListFilename) then
-        File.ReadAllLines(filesListFilename)
-        |> Array.distinct
-        |> Array.toList
-        |> List.map  _.Split(';')
-        |> List.map (fun arr -> (arr.[0], arr.[1]))
-        |> Some
-    else
+        let fileMode =
+            if File.Exists(filesListFilename) then
+                FileMode.Append
+            else
+                FileMode.Create
+        use fileStream = new FileStream(filesListFilename, fileMode, FileAccess.Write)
+        use streamWriter = new StreamWriter(fileStream)
+        lines |> List.iter streamWriter.WriteLine
+        streamWriter.Flush()
+        fileStream.Flush(true)
+    with err ->
+        Log.error err.Message
+
+let readFile (filePath: string) : Option<List<string * string>> =
+    try
+        if File.Exists(filePath) then
+            File.ReadAllLines(filePath)
+            |> Array.distinct
+            |> Array.toList
+            |> List.map (fun line -> line.Split(';'))
+            |> List.map (fun arr -> (arr.[0], arr.[1]))
+            |> Some
+        else
+            Log.warning "arquivo de listagem de arquivos não encontrado"
+            None
+    with err ->
+        Log.error err.Message
         None
+
+let readFileList () = readFile filesListFilename
