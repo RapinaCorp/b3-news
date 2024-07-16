@@ -10,7 +10,7 @@ let readLinesFromFile (fileName: string) : Option<string list> =
     else
         None
 
-let readTickersFromFile: string list =
+let readTickersFromFile () : string list =
     let currentDirectory = Directory.GetCurrentDirectory()
     let reportDirectory = currentDirectory +/ Download._outputDir
     let fileNames = [ "b3-news.cfg"; "b3news.cfg" ]

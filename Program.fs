@@ -35,7 +35,11 @@ let main args =
         printfn "     criar o arquivo index.html."
         Environment.Exit 0
 
-    let d1 = args.[0]
+    let mutable d1 = args.[0]
+
+    if d1 = "today" || d1 = "hoje" then
+        let today = DateTime.Today
+        d1 <- sprintf "%04d-%02d-%02d" today.Year today.Month today.Day
 
     if d1 = "server" then
         WebServer.serveStaticFiles ()
@@ -45,28 +49,28 @@ let main args =
         Fix.reclassify ()
         Environment.Exit 0
 
-    if d1 = "index" then
+    let createIndex () =
         match Download.loadFileList with
-        | Some filelist -> List.createIndexHtml filelist
-        | None -> printfn "x  Não foi possível carregar o arquivo de índice."
-        Environment.Exit 0
+        | Some filelist -> List.createIndexHtml filelist; Log.notice "- index.html criado."
+        | None -> Log.error "Não foi possível carregar o arquivo de índice."
 
-    let d2 = if args.Length >= 2 then args.[1] else args.[0]
+    if d1 = "index" then createIndex (); Environment.Exit 0
+
+    let d2 = if args.Length >= 2 then args.[1] else d1
 
     let codes =
         if args.Length >= 3 then
             Array.skip 2 args |> Array.toList
         else
-            Config.readTickersFromFile
+            Config.readTickersFromFile ()
 
     sprintf $"- Verificando fatos relevantes entre {d1} e {d2}:" |> Log.notice
     sprintf "  %A\n" codes |> Log.notice
 
-    let r = run codes d1 d2
-    printfn ""
-
-    match r with
-    | Ok _ -> 0
+    match run codes d1 d2 with
+    | Ok _ -> 
+        createIndex ()
+        0
     | Error err ->
         sprintf "x  Erro: %s" err |> Log.error
         1
