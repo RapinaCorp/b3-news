@@ -6,6 +6,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>false</PublishAot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Log.fs" />
@@ -17,6 +18,7 @@
     <Compile Include="Details.fs" />
     <Compile Include="List.fs" />
     <Compile Include="Fix.fs" />
+    <Compile Include="WebServer.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

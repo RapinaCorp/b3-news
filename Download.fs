@@ -148,18 +148,18 @@ let saveFileList (filelist: List<string * string>) =
 
     filelist
     |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
-    |> (fun lines ->
-        if File.Exists(filesListFilename) then
-            File.AppendAllLines(filesListFilename, lines)
-        else
-            File.WriteAllLines(filesListFilename, lines))
+    |> fun lines ->
+       if File.Exists(filesListFilename) then
+           File.AppendAllLines(filesListFilename, lines)
+       else
+           File.WriteAllLines(filesListFilename, lines)
 
 let loadFileList: Option<List<string * string>> =
     if File.Exists(filesListFilename) then
         File.ReadAllLines(filesListFilename)
         |> Array.distinct
         |> Array.toList
-        |> List.map (fun line -> line.Split(';'))
+        |> List.map  _.Split(';')
         |> List.map (fun arr -> (arr.[0], arr.[1]))
         |> Some
     else

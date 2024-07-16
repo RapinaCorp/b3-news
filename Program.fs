@@ -37,6 +37,10 @@ let main args =
 
     let d1 = args.[0]
 
+    if d1 = "server" then
+        WebServer.serveStaticFiles ()
+        Environment.Exit 0
+
     if d1 = "fix" then
         Fix.reclassify ()
         Environment.Exit 0
