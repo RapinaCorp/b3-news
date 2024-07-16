@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦅</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦅</text></svg>">
   <title>Visualizador de Arquivos</title>
   <style>
     body {
@@ -28,6 +30,12 @@
     .content {
       flex-grow: 1;
       padding: 20px;
+      padding-top: 0;
+    }
+
+    #frame-title {
+      margin: 1px 0 4px;
+      text-align: center;
     }
 
     #file-viewer {
@@ -39,10 +47,10 @@
     p.title {
       margin: 16px 0 10px -20px;
       padding: 2px 10px;
-      background-color: rgba(255,165,0,.5);
+      background-color: rgba(255, 165, 0, .5);
       border-radius: 0 20px 20px 0;
       line-height: 1.5em;
-    } 
+    }
 
     p:has(> a) {
       margin: 0;
@@ -80,25 +88,54 @@
     a.active {
       color: orangered;
     }
+
+    .toggle-button {
+      position: fixed;
+      top: 50%;
+      left: 0;
+      background-color: rgba(51, 51, 51, .5);
+      color: white;
+      padding: 10px 3px 10px 1px;
+      cursor: pointer;
+      z-index: 1000;
+    }
+
+    .hidden-sidebar {
+      display: none;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
-    <div class="sidebar">
+    <div id="sidebar" class="sidebar">
       <h2>Arquivos</h2>
       <div id="file-list"></div>
     </div>
+    <div id="toggle-button" class="toggle-button" onclick="toggleSidebar()">«</div>
     <div class="content" id="content-area">
+      <p id="frame-title"></p>
       <iframe id="file-viewer"></iframe>
     </div>
   </div>
 
   <script>
+    function toggleSidebar() {
+      var sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('hidden-sidebar');
+      var toggleButton = document.getElementById('toggle-button');
+      if (sidebar.classList.contains('hidden-sidebar')) {
+        toggleButton.innerHTML = '»';
+      } else {
+        toggleButton.innerHTML = '«';
+      }
+    }
+
     // Get the list of visited links from storage
     let visitedLinks = JSON.parse(localStorage.getItem('visitedLinks')) || [];
     // Dados dos arquivos
     const files = [
-{content}
+{ content }
     ];
 
     let lastLink = {};
@@ -110,15 +147,15 @@
       let lastDate = '';
       files.forEach((file) => {
         const filename = file.url.replace(/^.*[\\/]/, '');
-        if (lastFile!= file.name) {
+        if (lastFile != file.name) {
           lastFile = file.name;
           const p = document.createElement('p');
           p.className = 'title';
           p.innerHTML = '<b>' + file.name + '</b>';
           fileList.appendChild(p);
         }
-        let date = filename.substring(0,10); 
-        if (lastDate!= date) {
+        let date = filename.substring(0, 10);
+        if (lastDate != date) {
           lastDate = date;
           const p = document.createElement('p');
           p.className = 'date';
@@ -131,7 +168,7 @@
           link.classList.add('visited');
         }
         link.href = '#';
-        link.innerHTML = '<small>'+ filename.substring(20) + '</small>';
+        link.innerHTML = '<small>' + filename.substring(20) + '</small>';
         link.addEventListener('click', () => {
           visitedLinks.push(file.url);
           localStorage.setItem('visitedLinks', JSON.stringify(visitedLinks));
@@ -150,10 +187,53 @@
     function loadFile(url) {
       const fileViewer = document.getElementById('file-viewer');
       fileViewer.src = url;
+
+      const frameTitle = document.getElementById('frame-title');
+      frameTitle.innerHTML = '<small>' + url + '</small>';
+
+
+      // Add an event listener to ensure the iframe content is loaded before injecting CSS
+      fileViewer.onload = function () {
+        const iframeDocument = fileViewer.contentDocument || fileViewer.contentWindow.document;
+
+        // Create a new style element
+        const styleElement = iframeDocument.createElement('style');
+        styleElement.type = 'text/css';
+
+        // Add your CSS rules
+        const cssRules = `
+            body {
+              background-color: lightyellow;
+              font-family: sans-serif;
+              font-size: 14px;
+            }
+            h2 {
+              font-family: Georgia, serif;
+              font-size: 28px;
+            }
+            td,
+            .titulo-tabela, 
+            .titulo-dado,
+            .dado-cabecalho,
+            .dado-valores {
+              font-size:14px;
+            }
+          `;
+
+        // Append the CSS rules to the style element
+        if (styleElement.styleSheet) {
+          styleElement.styleSheet.cssText = cssRules; // For IE
+        } else {
+          styleElement.appendChild(iframeDocument.createTextNode(cssRules));
+        }
+        // Append the style element to the iframe's head
+        iframeDocument.head.appendChild(styleElement);
+      };
     }
 
     // Inicializar a aplicação
     displayFileList();
   </script>
 </body>
+
 </html>
