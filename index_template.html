@@ -28,9 +28,10 @@
     }
 
     .content {
+      display: flex;
+      flex-direction: column;
       flex-grow: 1;
-      padding: 20px;
-      padding-top: 0;
+      padding: 0 20px 20px;
     }
 
     #frame-title {
@@ -135,7 +136,7 @@
     let visitedLinks = JSON.parse(localStorage.getItem('visitedLinks')) || [];
     // Dados dos arquivos
     const files = [
-{ content }
+{content}
     ];
 
     let lastLink = {};
@@ -149,6 +150,7 @@
         const filename = file.url.replace(/^.*[\\/]/, '');
         if (lastFile != file.name) {
           lastFile = file.name;
+          lastDate = '';
           const p = document.createElement('p');
           p.className = 'title';
           p.innerHTML = '<b>' + file.name + '</b>';
