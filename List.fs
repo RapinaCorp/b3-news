@@ -99,13 +99,13 @@ let loadTemplate (filename: string) : Option<string> =
         None
 
 let createIndexHtml (files: (string * string) list) =
-    let template = loadTemplate "index_template.html"    
-    if template.IsSome then 
+    match loadTemplate "index_template.html" with
+    | Some template ->
         use outfile = System.IO.File.CreateText("index.html")
         files
         |> List.sortByDescending (fun (_, filename) -> Path.GetFileName filename)
         |> List.sortBy fst
         |> List.map (fun (ticker, filename) -> sprintf "  {name: '%s', url: '%s'}," ticker (filename.Replace("\\", "/")))
-        |> (fun lines -> fprintf outfile "%s" (template.Value.Replace("{content}", String.concat "\n" lines)))
-    else
+        |> fun lines -> fprintf outfile "%s" (template.Replace("{content}", String.concat "\n" lines))
+    | None ->
         Log.error "Template not found"
