@@ -6,8 +6,8 @@ open System.Net
 
 let getMimeType (filePath: string) =
     match Path.GetExtension(filePath).ToLowerInvariant() with
-    | ".html" -> "text/html"
-    | ".txt" -> "text/plain"
+    | ".html" -> "text/html; charset=utf-8"
+    | ".txt" -> "text/plain; charset=utf-8"
     | ".pdf" -> "application/pdf"
     | _ -> "application/octet-stream" // Default MIME type for unknown extensions
 
@@ -38,6 +38,7 @@ let serveStaticFiles () =
             response.ContentLength64 <- int64 fileBytes.Length
             response.ContentType <- getMimeType (fileToServe) // Set the MIME type
             response.OutputStream.Write(fileBytes, 0, fileBytes.Length)
+            response.OutputStream.Close()
         with
         | :? FileNotFoundException ->
             response.StatusCode <- 404
@@ -47,3 +48,6 @@ let serveStaticFiles () =
             response.StatusCode <- 500
             response.StatusDescription <- "Internal server error"
             response.Close()
+
+        // Ensure to close the response to complete the HTTP transaction
+        response.Close()
