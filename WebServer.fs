@@ -44,13 +44,14 @@ let handleRequestAsync (context: HttpListenerContext) =
             response.StatusDescription <- "Internal server error"
     }
 
-let serveStaticFilesAsync (port: int) (cts: CancellationTokenSource) =
+let serveStaticFilesAsync (cts: CancellationTokenSource) (port: int) (usage: string) =
     async {
         use listener = new HttpListener()
         listener.Prefixes.Add("http://localhost:" + port.ToString() + "/")
         listener.Start()
 
         printfn "\nServer listening on http://localhost:%i/" port
+        printfn "%s" usage 
 
         try
             while not cts.Token.IsCancellationRequested do
@@ -59,7 +60,7 @@ let serveStaticFilesAsync (port: int) (cts: CancellationTokenSource) =
 
         with
         | :? HttpListenerException when cts.Token.IsCancellationRequested -> ()
-        | e -> Log.alert e.Message
+        | e -> Log.alert ("- " + e.Message)
 
-        Log.info "Listener stopped."
+        Log.notice "- Servidor parado."
     }

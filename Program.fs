@@ -2,11 +2,16 @@
 open System.IO
 open System.Reflection
 open System.Threading
+open System.Text.RegularExpressions
+
+let isDateFormat (input: string) =
+    let pattern = @"^\d{4}-\d{2}-\d{2}$"
+    Regex.IsMatch(input, pattern)
 
 let download folderName (d: Details.NewsDetail) : Option<string * string> =
     match Download.downloadAndSaveFile (folderName d.filename) d.filename d.url with
     | Ok filename -> printfn "=> %s" filename; Some (d.ticker, filename)
-    | Error err -> printfn "x  Erro: %s | %s" err d.filename; None
+    | Error err -> Log.error <| sprintf "x Erro (download): %s | %s" err d.filename; None
 
 let run codes d1 d2 =
     let pe = Predicitions.setPrediction
@@ -24,7 +29,7 @@ let run codes d1 d2 =
         |> Ok
     | Error e -> Error e
 
-let waitForKeyPressAsync (cts: CancellationTokenSource) r = async {
+let waitForKeyPressAsync (cts: CancellationTokenSource) r i = async {
     while not cts.Token.IsCancellationRequested do
         if Console.KeyAvailable then
             let key = Console.ReadKey(intercept = true)
@@ -34,23 +39,28 @@ let waitForKeyPressAsync (cts: CancellationTokenSource) r = async {
             if key.KeyChar = 'r' then
                 Log.notice "- 'r': atualizando arquivos... "
                 r ()
+            if key.KeyChar = 'i' then
+                Log.notice "- 'i': recriando index.html..."
+                i ()
 
         do! Async.Sleep 500 
 }
 
+let serverUsage () = "'r' - recarrega arquivos\n'i' - recria index.html\n'q' - sai do servidor\n"
+
+let usage () =
+    let exeName = Assembly.GetEntryAssembly().GetName().Name
+    printfn "Uso: %s <data1> [<data2>] [<códigos>...]" exeName
+    printfn "     %s server - inicia servidor web" exeName
+    printfn "     %s index  - recria arquivo index.html" exeName
+    // printfn "     %s fix    - move arquivos após reclassificação de dados " exeName
+    printfn "Formato da data: AAAA-MM-DD (ou 'hoje')"
+    printfn "Códigos: Códigos das empresas ou lidos de report/b3news.cfg se não fornecidos."
+    printfn "         Usar códigos com 4 caracteres."
+    Environment.Exit 0
+
 [<EntryPoint>] 
 let rec main (args: string array) : int =
-    let exeName = Assembly.GetEntryAssembly().GetName().Name
-    let usage () =
-        printfn "Uso: %s <data1> [<data2>] [<códigos>...]" exeName
-        printfn "     %s server - inicia servidor web" exeName
-        printfn "     %s index  - recria arquivo index.html" exeName
-        // printfn "     %s fix    - move arquivos após reclassificação de dados " exeName
-        printfn "Formato da data: AAAA-MM-DD (ou 'hoje')"
-        printfn "Códigos: Códigos das empresas ou lidos de report/b3news.cfg se não fornecidos."
-        printfn "         Usar códigos com 4 caracteres."
-        Environment.Exit 0
-
     if args.Length = 0 then usage ()
 
     match args.[0] with
@@ -68,22 +78,21 @@ and createIndex () =
     0
 
 and updateFiles command args =
-    let d1 = if command = "hoje" then DateTime.Today.ToString("yyyy-MM-dd") else command
+    let d1 = if command = "hoje" || command = "today" then DateTime.Today.ToString("yyyy-MM-dd") else command
     let d2 = if args.Length > 0 then args.[0] else d1
+    if not (isDateFormat d1) || not (isDateFormat d2) then usage ()
     let codes = 
         if args.Length > 1 then Array.skip 1 args |> Array.toList
         else Config.readTickersFromFile ()
 
     match run codes d1 d2 with
     | Ok _ -> createIndex ()
-    | Error err -> sprintf "x  Erro: %s" err |> Log.error; 1
+    | Error err -> Log.error <| sprintf "x Erro (updateFiles): %s" err; 1
 
 and runServer () =
     use cts = new CancellationTokenSource()
-    let server = WebServer.serveStaticFilesAsync 8080 cts 
-    let keyPress = waitForKeyPressAsync cts (fun () -> updateFiles "hoje" [||] |> ignore)
+    let server = WebServer.serveStaticFilesAsync cts 8080 (serverUsage ())
+    let keyPress = 
+        waitForKeyPressAsync cts (fun () -> updateFiles "hoje" [||] |> ignore) (fun () -> createIndex () |> ignore)
     [server; keyPress] |> Async.Parallel |> Async.RunSynchronously |> ignore
-    Log.notice "Servidor parado."
     0
-
-
