@@ -196,7 +196,13 @@
 
       // Add an event listener to ensure the iframe content is loaded before injecting CSS
       fileViewer.onload = function () {
-        const iframeDocument = fileViewer.contentDocument || fileViewer.contentWindow.document;
+        let iframeDocument = null;
+        try {
+          iframeDocument = fileViewer.contentDocument || fileViewer.contentWindow?.document;
+        } catch {
+          return;
+        }
+        if (!iframeDocument) return;
 
         // Create a new style element
         const styleElement = iframeDocument.createElement('style');
