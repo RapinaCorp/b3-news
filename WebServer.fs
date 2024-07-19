@@ -4,6 +4,25 @@ open System
 open System.IO
 open System.Net
 open System.Threading
+open System.Net.NetworkInformation
+
+let lastTcpPort = 65535
+
+let findNextFreePort start ports : int option =
+    let rec findNext n =
+        if n > lastTcpPort then None
+        else if Seq.contains n ports then findNext (n + 1)
+        else Some n
+    findNext start
+
+// Return 'port' or, if it is already in use, return the next available port or None.
+let findFreePort (port: int) : int option =
+    if port < 1 || port > lastTcpPort then 
+        None
+    else
+        let ipProperties = IPGlobalProperties.GetIPGlobalProperties()
+        let listeners = ipProperties.GetActiveTcpListeners() |> Array.map _.Port |> Array.sort 
+        findNextFreePort port listeners
 
 let getMimeType (filePath: string) =
     match Path.GetExtension(filePath).ToLowerInvariant() with
@@ -22,10 +41,10 @@ let handleRequestAsync (context: HttpListenerContext) =
 
         // Serve index.html if no specific file is requested
         let fileToServe =
-            if String.IsNullOrEmpty(filePath) then
-                "index.html"
-            else
-                filePath
+            match filePath with
+            | null
+            | "" -> "index.html"
+            | _ -> filePath
 
         try
             use fileStream = File.OpenRead fileToServe
@@ -39,6 +58,7 @@ let handleRequestAsync (context: HttpListenerContext) =
                 let! read = fileStream.ReadAsync(buffer, 0, buffer.Length) |> Async.AwaitTask
                 do! response.OutputStream.WriteAsync(buffer, 0, read) |> Async.AwaitTask
                 bytesRead <- bytesRead + int64 read
+                System.Console.Write('.')
 
             do! response.OutputStream.FlushAsync() |> Async.AwaitTask
         with
@@ -68,5 +88,5 @@ let serveStaticFilesAsync (cts: CancellationTokenSource) (port: int) (usage: str
         | :? HttpListenerException when cts.Token.IsCancellationRequested -> ()
         | e -> Log.alert ("- " + e.Message)
 
-        Log.notice "- Servidor parado."
+        Log.alert "- Servidor parado."
     }

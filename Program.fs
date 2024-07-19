@@ -90,9 +90,13 @@ and updateFiles command args =
     | Error err -> Log.error <| sprintf "x Erro (updateFiles): %s" err; 1
 
 and runServer () =
-    use cts = new CancellationTokenSource()
-    let server = WebServer.serveStaticFilesAsync cts 8080 (serverUsage ())
-    let keyPress = 
-        waitForKeyPressAsync cts (fun () -> updateFiles "hoje" [||] |> ignore) (fun () -> createIndex () |> ignore)
-    [server; keyPress] |> Async.Parallel |> Async.RunSynchronously |> ignore
-    0
+    let port = WebServer.findFreePort 8080
+    if  port.IsNone then
+        1
+    else
+        use cts = new CancellationTokenSource()
+        let server = WebServer.serveStaticFilesAsync cts port.Value (serverUsage ())
+        let keyPress = 
+            waitForKeyPressAsync cts (fun () -> updateFiles "hoje" [||] |> ignore) (fun () -> createIndex () |> ignore)
+        [server; keyPress] |> Async.Parallel |> Async.RunSynchronously |> ignore
+        0
