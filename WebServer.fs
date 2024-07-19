@@ -28,12 +28,18 @@ let handleRequestAsync (context: HttpListenerContext) =
                 filePath
 
         try
-            let! fileBytes = File.ReadAllBytesAsync fileToServe |> Async.AwaitTask
-            response.ContentLength64 <- int64 fileBytes.Length
-            response.ContentType <- getMimeType (fileToServe) // Set the MIME type
-            do!
-                response.OutputStream.WriteAsync(fileBytes, 0, fileBytes.Length)
-                |> Async.AwaitTask
+            use fileStream = File.OpenRead fileToServe
+            response.ContentLength64 <- fileStream.Length
+            response.ContentType <- getMimeType fileToServe
+
+            let buffer = Array.zeroCreate<byte> (32 * 1024)
+            let mutable bytesRead = 0L
+
+            while bytesRead < fileStream.Length do
+                let! read = fileStream.ReadAsync(buffer, 0, buffer.Length) |> Async.AwaitTask
+                do! response.OutputStream.WriteAsync(buffer, 0, read) |> Async.AwaitTask
+                bytesRead <- bytesRead + int64 read
+
             do! response.OutputStream.FlushAsync() |> Async.AwaitTask
         with
         | :? FileNotFoundException ->
@@ -51,7 +57,7 @@ let serveStaticFilesAsync (cts: CancellationTokenSource) (port: int) (usage: str
         listener.Start()
 
         printfn "\nServer listening on http://localhost:%i/" port
-        printfn "%s" usage 
+        printfn "%s" usage
 
         try
             while not cts.Token.IsCancellationRequested do
