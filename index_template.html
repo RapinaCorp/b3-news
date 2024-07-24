@@ -72,6 +72,13 @@
       color: darkblue;
     }
 
+    a:not(.visited)::before {
+      content: "●";
+      color: #aaa;
+      padding-right: 3px;
+      margin-left: -12px;
+    }
+
     a:link {
       text-decoration: none;
     }
@@ -82,7 +89,8 @@
 
     a.active::before {
       content: "🡆";
-      padding-right: 2px;
+      padding-right: 3px;
+      margin-left: -12px;
       vertical-align: middle;
     }
 
@@ -97,12 +105,25 @@
       background-color: rgba(51, 51, 51, .5);
       color: white;
       padding: 10px 3px 10px 1px;
+      border-radius: 0 8px 8px 0;
       cursor: pointer;
       z-index: 1000;
     }
 
     .hidden-sidebar {
       display: none;
+    }
+
+    .today {
+      background: linear-gradient(to right, #ffa6007d, transparent);
+    }
+
+    .yesterday {
+      background: linear-gradient(to right, #ffa50034, transparent);
+    }
+
+    .day-before-yesterday {
+      background: linear-gradient(to right, #ffa60014, transparent);
     }
   </style>
 </head>
@@ -140,6 +161,21 @@
     ];
 
     let lastLink = {};
+    // todayMinus(n) displays the date n days ago in YYYY_MM_DD format
+    let todayMinus = (n) => {
+      let d = new Date();
+      d.setDate(d.getDate() - n);
+      return d.toISOString().split('T')[0].replace(/-/g, '_');
+    }
+
+    let getDateClass = (date) => {
+      switch (date) {
+        case todayMinus(0): return 'today';
+        case todayMinus(1): return 'yesterday';
+        case todayMinus(2): return 'day-before-yesterday';
+        default: return '';
+      }
+    }
 
     // Função para exibir a lista de arquivos
     function displayFileList() {
@@ -160,7 +196,20 @@
         if (lastDate != date) {
           lastDate = date;
           const p = document.createElement('p');
-          p.className = 'date';
+          p.classList.add('date');
+          let dateClass = getDateClass(date);
+          if (dateClass) p.classList.add(dateClass); 
+          switch (date) {
+            case todayMinus(0):
+              p.classList.add('today');
+              break;
+            case todayMinus(1):
+              p.classList.add('yesterday');
+              break;
+            case todayMinus(2):
+              p.classList.add('day-before-yesterday');
+              break;
+          }
           p.textContent = date;
           fileList.appendChild(p);
         }
