@@ -142,31 +142,22 @@
   </div>
 
   <script>
-    function toggleSidebar() {
-      var sidebar = document.getElementById('sidebar');
-      sidebar.classList.toggle('hidden-sidebar');
-      var toggleButton = document.getElementById('toggle-button');
-      if (sidebar.classList.contains('hidden-sidebar')) {
-        toggleButton.innerHTML = '»';
-      } else {
-        toggleButton.innerHTML = '«';
-      }
-    }
-
     // Get the list of visited links from storage
     let visitedLinks = JSON.parse(localStorage.getItem('visitedLinks')) || [];
-    // Dados dos arquivos
+
+    let lastLink = {};
+
+    // Dados dos arquivos (manter a string {content} sem espaços!!)
     const files = [
 {content}
     ];
 
-    let lastLink = {};
     // todayMinus(n) displays the date n days ago in YYYY_MM_DD format
     let todayMinus = (n) => {
       let d = new Date();
       d.setDate(d.getDate() - n);
       return d.toISOString().split('T')[0].replace(/-/g, '_');
-    }
+    };
 
     let getDateClass = (date) => {
       switch (date) {
@@ -175,60 +166,59 @@
         case todayMinus(2): return 'day-before-yesterday';
         default: return '';
       }
-    }
+    };
 
     // Função para exibir a lista de arquivos
     function displayFileList() {
       const fileList = document.getElementById('file-list');
       let lastFile = '';
       let lastDate = '';
+
       files.forEach((file) => {
         const filename = file.url.replace(/^.*[\\/]/, '');
-        if (lastFile != file.name) {
+
+        if (lastFile !== file.name) {
           lastFile = file.name;
           lastDate = '';
           const p = document.createElement('p');
           p.className = 'title';
-          p.innerHTML = '<b>' + file.name + '</b>';
+          p.innerHTML = `<b>${file.name}</b>`;
           fileList.appendChild(p);
         }
+
         let date = filename.substring(0, 10);
-        if (lastDate != date) {
+
+        if (lastDate !== date) {
           lastDate = date;
           const p = document.createElement('p');
           p.classList.add('date');
           let dateClass = getDateClass(date);
-          if (dateClass) p.classList.add(dateClass); 
-          switch (date) {
-            case todayMinus(0):
-              p.classList.add('today');
-              break;
-            case todayMinus(1):
-              p.classList.add('yesterday');
-              break;
-            case todayMinus(2):
-              p.classList.add('day-before-yesterday');
-              break;
-          }
+          if (dateClass) p.classList.add(dateClass);
           p.textContent = date;
           fileList.appendChild(p);
         }
+
         const p = document.createElement('p');
         const link = document.createElement('a');
+
         if (visitedLinks.includes(file.url)) {
           link.classList.add('visited');
         }
+
         link.href = '#';
-        link.innerHTML = '<small>' + filename.substring(20) + '</small>';
+        link.innerHTML = `<small>${filename.substring(20)}</small>`;
+
         link.addEventListener('click', () => {
           visitedLinks.push(file.url);
           localStorage.setItem('visitedLinks', JSON.stringify(visitedLinks));
           link.classList.add('visited');
           link.classList.add('active');
+
           if (lastLink && lastLink.classList) lastLink.classList.remove('active');
           lastLink = link;
           loadFile(file.url);
         });
+
         p.appendChild(link);
         fileList.appendChild(p);
       });
@@ -240,17 +230,18 @@
       fileViewer.src = url;
 
       const frameTitle = document.getElementById('frame-title');
-      frameTitle.innerHTML = '<small>' + url + '</small>';
-
+      frameTitle.innerHTML = `<small>${url}</small>`;
 
       // Add an event listener to ensure the iframe content is loaded before injecting CSS
       fileViewer.onload = function () {
         let iframeDocument = null;
+
         try {
           iframeDocument = fileViewer.contentDocument || fileViewer.contentWindow?.document;
         } catch {
           return;
         }
+
         if (!iframeDocument) return;
 
         // Create a new style element
@@ -259,23 +250,23 @@
 
         // Add your CSS rules
         const cssRules = `
-            body {
-              background-color: lightyellow;
-              font-family: sans-serif;
-              font-size: 14px;
-            }
-            h2 {
-              font-family: Georgia, serif;
-              font-size: 28px;
-            }
-            td,
-            .titulo-tabela, 
-            .titulo-dado,
-            .dado-cabecalho,
-            .dado-valores {
-              font-size:14px;
-            }
-          `;
+          body {
+            background-color: lightyellow;
+            font-family: sans-serif;
+            font-size: 14px;
+          }
+          h2 {
+            font-family: Georgia, serif;
+            font-size: 28px;
+          }
+          td,
+          .titulo-tabela,
+          .titulo-dado,
+          .dado-cabecalho,
+          .dado-valores {
+            font-size: 14px;
+          }
+        `;
 
         // Append the CSS rules to the style element
         if (styleElement.styleSheet) {
@@ -283,6 +274,7 @@
         } else {
           styleElement.appendChild(iframeDocument.createTextNode(cssRules));
         }
+
         // Append the style element to the iframe's head
         iframeDocument.head.appendChild(styleElement);
       };
