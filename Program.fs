@@ -29,24 +29,24 @@ let run codes d1 d2 =
         |> Ok
     | Error e -> Error e
 
-let waitForKeyPressAsync (cts: CancellationTokenSource) r i = async {
+let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> unit) indexFun = async {
     while not cts.Token.IsCancellationRequested do
         if Console.KeyAvailable then
             let key = Console.ReadKey(intercept = true)
             if key.KeyChar = 'q' then
-                Log.warning "- 'q': Parando o servidor..."
+                Log.warning "\n- 'q': Parando o servidor..."
                 cts.Cancel()
-            if key.KeyChar = 'r' then
-                Log.notice "- 'r': atualizando arquivos... "
-                r ()
+            if key.KeyChar >= '0' && key.KeyChar <= '9' then
+                Log.notice $"\n- '{key.KeyChar}': atualizando arquivos... "
+                refreshFun key.KeyChar
             if key.KeyChar = 'i' then
-                Log.notice "- 'i': recriando index.html..."
-                i ()
+                Log.notice "\n- 'i': recriando index.html..."
+                indexFun ()
 
         do! Async.Sleep 500 
 }
 
-let serverUsage () = "'r' - recarrega arquivos\n'i' - recria index.html\n'q' - sai do servidor\n"
+let serverUsage () = "'0'-'9' - recarrega arquivos de 'n' dias atrás\n'i' - recria index.html\n'q' - sai do servidor\n"
 
 let usage () =
     let exeName = Assembly.GetEntryAssembly().GetName().Name
@@ -78,7 +78,16 @@ and createIndex () =
     0
 
 and updateFiles command args =
-    let d1 = if command = "hoje" || command = "today" then DateTime.Today.ToString("yyyy-MM-dd") else command
+    let mutable num = 0
+    let isNum = Int32.TryParse(command, &num) 
+    let d1 =
+        if command = "hoje" then 
+            DateTime.Today.ToString("yyyy-MM-dd") 
+        else if isNum then
+            DateTime.Today.AddDays(-num).ToString("yyyy-MM-dd")
+        else 
+            command
+
     let d2 = if args.Length > 0 then args.[0] else d1
     if not (isDateFormat d1) || not (isDateFormat d2) then usage ()
     let codes = 
@@ -95,8 +104,9 @@ and runServer () =
         1
     else
         use cts = new CancellationTokenSource()
+        let updateFiles' (key: char) = updateFiles (string key) [||] |> ignore
+        let createIndex' () = createIndex () |> ignore
+        let keyPress = waitForKeyPressAsync cts updateFiles' createIndex'
         let server = WebServer.serveStaticFilesAsync cts port.Value (serverUsage ())
-        let keyPress = 
-            waitForKeyPressAsync cts (fun () -> updateFiles "hoje" [||] |> ignore) (fun () -> createIndex () |> ignore)
         [server; keyPress] |> Async.Parallel |> Async.RunSynchronously |> ignore
         0

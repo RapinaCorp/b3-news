@@ -107,9 +107,13 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
             let decoded = removeQuotes body |> Convert.FromBase64String
             System.IO.Directory.CreateDirectory(_outputDir +/ folder) |> ignore
             let filePath = _outputDir +/ folder +/ (filename + ext decoded)
-            use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
-            do! fileStream.WriteAsync(decoded, 0, decoded.Length) |> Async.AwaitTask
-            return Ok filePath
+            // Return error if files already exists
+            if File.Exists filePath then
+                return Error "arquivo já existe"
+            else 
+                use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
+                do! fileStream.WriteAsync(decoded, 0, decoded.Length) |> Async.AwaitTask
+                return Ok filePath
         with ex ->
             return Error(sprintf "erro ao salvar: %s" ex.Message)
     }
