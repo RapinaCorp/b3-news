@@ -142,12 +142,18 @@
   </div>
 
   <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('hidden-sidebar');
+      document.getElementById('toggle-button').innerHTML = sidebar.classList.contains('hidden-sidebar') ? '»' : '«';
+    }
+
     // Get the list of visited links from storage
     let visitedLinks = JSON.parse(localStorage.getItem('visitedLinks')) || [];
 
     let lastLink = {};
 
-    // Dados dos arquivos (manter a string {content} sem espaços!!)
+    // Dados dos arquivos (manter a string content sem espaços!!)
     const files = [
 {content}
     ];
