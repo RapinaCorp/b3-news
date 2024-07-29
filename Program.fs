@@ -46,7 +46,7 @@ let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> uni
         do! Async.Sleep 500 
 }
 
-let serverUsage () = "'0'-'9' - recarrega arquivos de 'n' dias atrás\n'i' - recria index.html\n'q' - sai do servidor\n"
+let serverUsage () = "'0'-'9' - recarrega arquivos desde 'n' dias atrás\n'i' - recria index.html\n'q' - sai do servidor\n"
 
 let usage () =
     let exeName = Assembly.GetEntryAssembly().GetName().Name
@@ -80,15 +80,19 @@ and createIndex () =
 and updateFiles command args =
     let mutable num = 0
     let isNum = Int32.TryParse(command, &num) 
+    
     let d1 =
-        if command = "hoje" then 
-            DateTime.Today.ToString("yyyy-MM-dd") 
-        else if isNum then
-            DateTime.Today.AddDays(-num).ToString("yyyy-MM-dd")
-        else 
-            command
+        match command with
+        | "hoje" -> DateTime.Today.ToString("yyyy-MM-dd") 
+        | _ when isNum -> DateTime.Today.AddDays(-num).ToString("yyyy-MM-dd")
+        | _ -> command
+    
+    let d2 = 
+        match args.Length with
+        | len when len > 0 -> args.[0]
+        | _ when isNum -> DateTime.Today.ToString("yyyy-MM-dd")
+        | _ -> d1
 
-    let d2 = if args.Length > 0 then args.[0] else d1
     if not (isDateFormat d1) || not (isDateFormat d2) then usage ()
     let codes = 
         if args.Length > 1 then Array.skip 1 args |> Array.toList
