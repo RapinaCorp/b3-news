@@ -59,8 +59,9 @@ let usage () =
     printfn "         Usar códigos com 4 caracteres."
     Environment.Exit 0
 
+
 [<EntryPoint>] 
-let rec main (args: string array) : int =
+let rec _main (args: string array) : int =
     if args.Length = 0 then usage ()
 
     match args.[0] with
@@ -114,3 +115,14 @@ and runServer () =
         let server = WebServer.serveStaticFilesAsync cts port.Value (serverUsage ())
         [server; keyPress] |> Async.Parallel |> Async.RunSynchronously |> ignore
         0
+
+// [<EntryPoint>] 
+// let main args =
+//     try
+//         let captchaToken = Captcha.executeJavaScriptWithEdge()
+//         printfn "Captcha token: %s" captchaToken
+//     with
+//     | ex ->
+//         printfn "An error occurred: %s" ex.Message
+
+//     0

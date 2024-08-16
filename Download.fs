@@ -52,11 +52,13 @@ let fnet (url: string) : Async<Result<string, string>> =
 type EnetBody = { d: string }
 
 let enet (url: string) : Async<Result<string, string>> =
+    Log.debug <| sprintf "ENET url: %s" url
     async {
         let nid = Regex.Match(url, patternEnet).Groups.[1].Value
 
         let obj =
-            $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{nid}", "token": "", "versaoCaptcha": "" }}"""
+            $"""{{ "codigoInstituicao": "2", numeroProtocolo: "{nid}", "token": "03AFcWeA7XxKOaTT2Swn4cE_CxQEC8ldGZDnE02vzZUox1hYQg7G72wAwjZ-wqDgOO00bVKFGxhm_uXDm5DPyPzRVfbI2QDBWwHIJfCTkOsmpNNp0wEj2sqX433CTIxACnvve9vkU1fpywgpZ6et0cTYKecD-QkmmYCtxcfCJVZL6p42YScbrpg_t_IohNeq-iKBcyCVvARfLiMe3Z2u1vj5XW7wZrPVMRxEa4HfoN9pbVfpf9pP_uYAMXqZXR6jXBHvYlBa-bqNUwZlYJJy5Y4GV2VdEZTpT-GKDCj_z70u4IkK2NyNArcqKgoaVyswKfPk59D31GmpDTsOpkPsBVkbSQNTs7ecsc_C44oXpy5kcbYx70jVyotDmdH_R9jEjSoUMvtRuIYkrs6iyj45Mm72rn-aA9Fs-ToK4s8KktdOyEUFoMByfzBHqrwMfA2C9-3_8r12x__zki83L7vmDxdvsSyYWaEE0ZyuWxQxCqdRcNyNxCAjF0JrQSsxSv0N9G0H7MlC5syrnsiS3rcPMeMVW01I-x4C6GgMQpUvYQEDyq47L3HN8THLfNNkSBVcN_t4xWDIB0yoeemF8BT5BcJi-r_iUtIVcwapISjecS-ypq-aIwdiTp3v48slvRT6l6YKubZ5Y6xtKkWXSn4fftVjMikgoR0zr_6YB-Z7t6V7cQy47QWrZXOW8sREHxjpujYi6Ao7DauAbKvKBSN-2f-glxHRaeiT7t5Os3TVQogFTSteL8yxsEYSBoSdVfvH5OhRgMhIg7aqb4Wx14vDzmI8Ed7RV5-jbqRQJUTzBb_yP6n4TJYyEPvw-dN0j31VIbWFIIORA5-8kS", versaoCaptcha: "V3" }}"""
+            // $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{nid}", "token": "", "versaoCaptcha": "" }}"""
 
         if String.IsNullOrEmpty(nid) then
             return Error("Invalid URL " + url)
@@ -104,6 +106,8 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
 
     async {
         try
+            // print first 10 chars of body
+            Log.debug <| sprintf "body: %s" (body.Substring(0, min 100 body.Length))
             let decoded = removeQuotes body |> Convert.FromBase64String
             System.IO.Directory.CreateDirectory(_outputDir +/ folder) |> ignore
             let filePath = _outputDir +/ folder +/ (filename + ext decoded)
@@ -127,8 +131,8 @@ let getBody (url: string) =
         | None -> return Error $"URL inválida '{url}'"
         | Some patternFound ->
             match patternFound with
-            | _ when patternFound = patternFnet -> return! fnet url
-            | _ when patternFound = patternEnet -> return! enet url
+            | _ when patternFound = patternFnet -> Log.debug "FNET"; return! fnet url
+            | _ when patternFound = patternEnet -> Log.debug "ENET"; return! enet url
             | _ -> return Error $"erro na URL {url}"
     }
 
