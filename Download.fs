@@ -110,7 +110,7 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
             // Return error if files already exists
             if File.Exists filePath then
                 return Error "arquivo já existe"
-            else 
+            else
                 use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
                 do! fileStream.WriteAsync(decoded, 0, decoded.Length) |> Async.AwaitTask
                 return Ok filePath
@@ -131,6 +131,13 @@ let getBody (url: string) =
             | _ when patternFound = patternEnet -> return! enet url
             | _ -> return Error $"erro na URL {url}"
     }
+
+/// Returns the valid matching url (fnet or enet) for the given url, or Error if invalid
+let getSourceUrl (url: string) : string =
+    printfn "getSourceUrl: %s" url
+    if Regex.IsMatch(url, patternFnet) then url
+    elif Regex.IsMatch(url, patternEnet) then url
+    else url
 
 let downloadAndSaveFile folder filename url : Result<string, string> =
     async {
@@ -183,3 +190,16 @@ let readFile (filePath: string) : Option<List<string * string>> =
         None
 
 let readFileList () = readFile filesListFilename
+
+/// Returns an HTML <a> or <form> for the given url, depending on the type (fnet: <a>, enet: <form POST>)
+let getHtmlLink (url: string) (linkText: string) : string =
+    if Regex.IsMatch(url, patternFnet) then
+        match fnetURL url with
+        | Some directUrl -> $"<a href='{directUrl}' target='_blank'>{linkText}</a>"
+        | None -> linkText
+    elif Regex.IsMatch(url, patternEnet) then
+        let nid = Regex.Match(url, patternEnet).Groups.[1].Value
+        let localPdfUrl = $"/pdf/{nid}"
+        $"<a href='{localPdfUrl}' target='_self'>Enet: {linkText}</a>"
+    else
+        linkText

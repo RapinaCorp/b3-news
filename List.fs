@@ -22,26 +22,24 @@ type Report =
       name: string
       url: string }
 
-let listReports (directoryPath: string) =
-
+let tryParseReportFromFilename (url: string) : Report option =
     let pattern =
-        @"([\d_]{10})[\d_]{10}(FII_)*([A-Z0-9]+[A-Z0-9_]+)([A-Z][a-z\.][A-Za-z_\.]+)"
+        @"([\d_]{10})[\d_]{10}(FII_)*([A-Z0-9]+[A-Z0-9_]+)_((?:AGO_E_)?[A-Z0-9\.][a-z0-9\.][A-Za-z0-9_\.]+)"
     let options = RegexOptions.None
+    let matches = Regex.Matches(url, pattern, options)
+    if matches.Count > 0 && matches.[0].Groups.Count > 3 then
+        let m = matches.[0]
+        Some
+            { date = (m.Groups.[1].ToString() |> stripLastUnderscore)
+              company = (m.Groups.[2].ToString() + m.Groups.[3].ToString() |> stripLastUnderscore)
+              name = (m.Groups.[4].ToString() |> stripLastUnderscore)
+              url = url }
+    else
+        None
 
-    let toReport url (matches: MatchCollection) =
-        [ for m in matches do
-              if m.Length > 3 then
-                  Some
-                      { date = (m.Groups.[1].ToString() |> stripLastUnderscore)
-                        company = (m.Groups.[2].ToString() + m.Groups.[3].ToString() |> stripLastUnderscore)
-                        name = (m.Groups.[4].ToString() |> stripLastUnderscore)
-                        url = url }
-              else
-                  None ]
-
+let listReports (directoryPath: string) =
     listFilesWithRelativePaths directoryPath
-    |> List.map (fun input -> Regex.Matches(input, pattern, options) |> toReport input)
-    |> List.concat
+    |> List.choose tryParseReportFromFilename
 
 let createHtmlTable (company: string) (companyReports: Report list) =
     let tableHeader =
@@ -79,12 +77,10 @@ let printHtml (directoryPath: string) =
     System.Console.OutputEncoding <- Encoding.UTF8
 
     listReports directoryPath
-    |> List.choose id
     |> List.sortBy (fun r -> r.company, r.date, r.name)
     |> List.groupBy (fun r -> r.company)
     |> List.map (fun (company, companyReports) -> createHtmlTable company companyReports)
     |> String.concat ""
-    // |> function str -> str |> windows1252.GetBytes |> utf8.GetString
     |> printfn "<!DOCTYPE html><html lang=\"pt\">%s<body>%s</body></html>" head
 
 // |> List.iter (fun r -> printfn "%-20s\t%-60s\t%s" r.company r.name r.date)
@@ -94,7 +90,7 @@ let loadTemplate (filename: string) : Option<string> =
     let currentDirectory = Directory.GetCurrentDirectory()
     let filePath = currentDirectory +/ filename
     if File.Exists(filePath) then
-        Some (File.ReadAllText filePath)
+        Some(File.ReadAllText filePath)
     else
         None
 
@@ -105,7 +101,7 @@ let createIndexHtml (files: (string * string) list) =
         files
         |> List.sortByDescending (fun (_, filename) -> Path.GetFileName filename)
         |> List.sortBy fst
-        |> List.map (fun (ticker, filename) -> sprintf "  {name: '%s', url: '%s'}," ticker (filename.Replace("\\", "/")))
+        |> List.map (fun (ticker, filename) ->
+            sprintf "  {name: '%s', url: '%s'}," ticker (filename.Replace("\\", "/")))
         |> fun lines -> fprintf outfile "%s" (template.Replace("{content}", String.concat "\n" lines))
-    | None ->
-        Log.error "Template not found"
+    | None -> Log.error "Template not found"
