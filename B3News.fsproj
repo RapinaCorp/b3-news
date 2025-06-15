@@ -28,5 +28,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="ML/data/B3NewsModel.zip" />
+    <EmbeddedResource Include="reports_template.html" />
   </ItemGroup>
 </Project>
