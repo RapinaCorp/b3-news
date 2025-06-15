@@ -53,42 +53,32 @@ let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> uni
 
 let listReports codes d1 d2 =
     let HtmlEncode (s: string) = System.Web.HttpUtility.HtmlEncode(s)
-    match Details.fetchNewsDetails codes d1 d2 with
-    | Ok details ->
-        let htmlRows =
-            details
-            |> List.sortByDescending (fun d -> d.dateTime)
-            |> List.map (fun d ->
-                match List.tryParseReportFromFilename d.filename with
-                | Some report ->
-                    let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{HtmlEncode(report.name.Replace('_', ' '))}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
-                | None ->
-                    let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
-            |> String.concat "\n"
-        let html =
-            $"""
-            <html>
-            <head>
-                <meta charset="utf-8"/>
-                <title>Relatórios</title>
-                <style>table{{border-collapse:collapse;margin:auto;font:0.75rem Consolas,monospace;min-width:400px;box-shadow:0 0 20px rgba(0,0,0,.15)}}thead tr{{background:#003475;color:#fff;text-align:left;font-size:.9rem}}th{{padding:12px 15px}}td{{padding:6px}}tbody tr{{border-bottom:1px solid #ddd}}tbody tr:nth-of-type(2n){{background:#f3f3f3}}tbody tr:last-of-type{{border-bottom:2px solid #003475}}tbody tr:hover{{background:#ff9}}td:first-child{{text-align:center}}</style>
-            </head>
-            <body>
-                <h2>Relatórios encontrados</h2>
-                <table>
-                    <thead><tr><th>Empresa</th><th>Nome</th><th>Data</th><th>URL</th></tr></thead>
-                    <tbody>{htmlRows}</tbody>
-                </table>
-            </body>
-            </html>
-            """
-        let outFile = "reports.html"
-        File.WriteAllText(outFile, html)
-        Log.notice $"Relatório salvo em {outFile}"
-        Ok outFile
-    | Error e -> Error e
+    let templatePath = "reports_template.html"
+    if not (File.Exists(templatePath)) then
+        Log.error "Arquivo de template reports_template.html não encontrado."
+        Error "Template não encontrado."
+    else
+        let template = File.ReadAllText(templatePath)
+        match Details.fetchNewsDetails codes d1 d2 with
+        | Ok details ->
+            let htmlRows =
+                details
+                |> List.sortByDescending (fun d -> d.dateTime)
+                |> List.map (fun d ->
+                    match List.tryParseReportFromFilename d.filename with
+                    | Some report ->
+                        let aTag = Download.getHtmlLink d.url d.filename
+                        $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{HtmlEncode(report.name.Replace('_', ' '))}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
+                    | None ->
+                        let aTag = Download.getHtmlLink d.url d.filename
+                        $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
+                |> String.concat "\n"
+            let html = template.Replace("{rows}", htmlRows)
+            let outFile = "reports.html"
+            File.WriteAllText(outFile, html)
+            Log.notice $"Relatório salvo em {outFile}"
+            Ok outFile
+        | Error e -> Error e
 
 let serverUsage () =
     "'0'-'9' - recarrega arquivos desde 'n' dias atrás\n'i' - recria index.html\n'q' - sai do servidor\n"

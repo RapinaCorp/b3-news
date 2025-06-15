@@ -4,6 +4,7 @@ obj
 *.pdf
 *.html
 !index_template.html
+!reports_template.html
 report/*
 *.zip
 !testdata.txt
