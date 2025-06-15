@@ -24,7 +24,7 @@ type Report =
 
 let tryParseReportFromFilename (url: string) : Report option =
     let pattern =
-        @"([\d_]{10})[\d_]{10}(FII_)*([A-Z0-9]+[A-Z0-9_]+)_((?:AGO_E_)?[A-Z0-9\.][a-z0-9\.][A-Za-z0-9_\.]+)"
+        @"([\d_]{10})[\d_]{10}(FII_)?([A-Z0-9][A-Z0-9_.]+)_([A-Z0-9\.][a-z0-9\.][A-Za-z0-9_\.]+[A-Za-z])[\d_]*"
     let options = RegexOptions.None
     let matches = Regex.Matches(url, pattern, options)
     if matches.Count > 0 && matches.[0].Groups.Count > 3 then
