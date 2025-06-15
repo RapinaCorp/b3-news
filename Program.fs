@@ -52,18 +52,20 @@ let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> uni
     }
 
 let listReports codes d1 d2 =
+    let HtmlEncode (s: string) = System.Web.HttpUtility.HtmlEncode(s)
     match Details.fetchNewsDetails codes d1 d2 with
     | Ok details ->
         let htmlRows =
             details
+            |> List.sortByDescending (fun d -> d.dateTime)
             |> List.map (fun d ->
                 match List.tryParseReportFromFilename d.filename with
                 | Some report ->
                     let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td>{System.Web.HttpUtility.HtmlEncode(report.company)}</td><td>{System.Web.HttpUtility.HtmlEncode(report.name)}</td><td>{System.Web.HttpUtility.HtmlEncode(report.date)}</td><td>{aTag}</td></tr>"
+                    $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{HtmlEncode(report.name.Replace('_', ' '))}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
                 | None ->
                     let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td colspan='3'>{System.Web.HttpUtility.HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
+                    $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
             |> String.concat "\n"
         let html =
             $"""
@@ -71,7 +73,7 @@ let listReports codes d1 d2 =
             <head>
                 <meta charset="utf-8"/>
                 <title>Relatórios</title>
-                <style>table{{border-collapse:collapse;margin:auto;font-size:.9em;font-family:sans-serif;min-width:400px;box-shadow:0 0 20px rgba(0,0,0,.15)}}thead tr{{background-color:#009879;color:#fff;text-align:left}}th{{padding:12px 15px}}td{{padding:6px}}tbody tr{{border-bottom:1px solid #ddd}}tbody tr:nth-of-type(2n){{background-color:#f3f3f3}}tbody tr:last-of-type{{border-bottom:2px solid #009879}}</style>
+                <style>table{{border-collapse:collapse;margin:auto;font:0.75rem Consolas,monospace;min-width:400px;box-shadow:0 0 20px rgba(0,0,0,.15)}}thead tr{{background:#003475;color:#fff;text-align:left;font-size:.9rem}}th{{padding:12px 15px}}td{{padding:6px}}tbody tr{{border-bottom:1px solid #ddd}}tbody tr:nth-of-type(2n){{background:#f3f3f3}}tbody tr:last-of-type{{border-bottom:2px solid #003475}}tbody tr:hover{{background:#ff9}}td:first-child{{text-align:center}}</style>
             </head>
             <body>
                 <h2>Relatórios encontrados</h2>

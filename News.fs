@@ -67,7 +67,7 @@ let getTicker (txt: string) =
     if txt = null then
         ""
     else
-        let regex = new Regex("\\((....).*\\)")
+        let regex = new Regex("\\((....).*\\)") // Matches ticker in parentheses: "(ABCD)"
         let matchResult = regex.Match(txt)
 
         if matchResult.Success then

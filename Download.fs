@@ -195,7 +195,7 @@ let readFileList () = readFile filesListFilename
 let getHtmlLink (url: string) (linkText: string) : string =
     if Regex.IsMatch(url, patternFnet) then
         match fnetURL url with
-        | Some directUrl -> $"<a href='{directUrl}' target='_blank'>{linkText}</a>"
+        | Some directUrl -> $"<a href='{directUrl}' target='_self'>{linkText}</a>"
         | None -> linkText
     elif Regex.IsMatch(url, patternEnet) then
         let nid = Regex.Match(url, patternEnet).Groups.[1].Value
