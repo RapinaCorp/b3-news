@@ -70,7 +70,8 @@ let listReports codes d1 d2 =
                 match List.tryParseReportFromFilename d.filename with
                 | Some report ->
                     let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{HtmlEncode(report.name.Replace('_', ' '))}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
+                    let bTag = Download.getHtmlLink d.url <| HtmlEncode(report.name.Replace('_', ' '))
+                    $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{bTag}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
                 | None ->
                     let aTag = Download.getHtmlLink d.url d.filename
                     $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
@@ -89,6 +90,8 @@ let usage () =
     let exeName = Assembly.GetEntryAssembly().GetName().Name
     printfn "Uso: %s <data1> [<data2>] [<códigos>...]" exeName
     printfn "     %s server - inicia servidor web" exeName
+    printfn "     %s daemon - inicia servidor web em segundo plano" exeName
+    printfn "     %s list <data1> [<data2>] [<códigos>...] - gera relatorios.html" exeName
     printfn "     %s index  - recria arquivo index.html" exeName
     // printfn "     %s fix    - move arquivos após reclassificação de dados " exeName
     printfn "Formato da data: AAAA-MM-DD (ou 'hoje')"
@@ -110,6 +113,7 @@ let rec main (args: string array) : int =
         0
     | "index" -> createIndex ()
     | "server" -> runServer ()
+    | "daemon" -> runDaemon ()
     | "list" -> reportsFile args[1..]
     | "resources" ->
         Predicitions.listResources ()
@@ -185,4 +189,14 @@ and runServer () =
         let keyPress = waitForKeyPressAsync cts updateFiles' createIndex'
         let server = WebServer.serveStaticFilesAsync cts port.Value (serverUsage ())
         [ server; keyPress ] |> Async.Parallel |> Async.RunSynchronously |> ignore
+        0
+
+and runDaemon () =
+    let port = WebServer.findFreePort 8080
+    if port.IsNone then
+        1
+    else
+        use cts = new CancellationTokenSource()
+        let server = WebServer.serveStaticFilesAsync cts port.Value (serverUsage ())
+        server |> Async.RunSynchronously |> ignore
         0

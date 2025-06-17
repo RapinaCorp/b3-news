@@ -2,6 +2,8 @@
 
 <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Relatórios de Empresas e FIIs" />
     <title>Relatórios</title>
     <style>
         h2 {
@@ -26,8 +28,12 @@
             font-size: .9rem
         }
 
+        tr#titulo>th {
+            padding: 10px 12px 0;
+        }
+
         th {
-            padding: 12px 15px
+            padding: 10px 12px 12px;
         }
 
         td {
@@ -53,6 +59,14 @@
         td:first-child {
             text-align: center
         }
+
+        @media (max-width: 600px) {
+
+            table tr th:nth-child(4),
+            table tr td:nth-child(4) {
+                display: none;
+            }
+        }
     </style>
 </head>
 
@@ -60,7 +74,7 @@
     <h2>Relatórios de Empresas e FIIs</h2>
     <table id="tabela">
         <thead>
-            <tr>
+            <tr id="titulo">
                 <th>Empresa</th>
                 <th>Nome</th>
                 <th>Data</th>

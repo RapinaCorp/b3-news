@@ -200,6 +200,6 @@ let getHtmlLink (url: string) (linkText: string) : string =
     elif Regex.IsMatch(url, patternEnet) then
         let nid = Regex.Match(url, patternEnet).Groups.[1].Value
         let localPdfUrl = $"/pdf/{nid}"
-        $"<a href='{localPdfUrl}' target='_self'>Enet: {linkText}</a>"
+        $"<a href='{localPdfUrl}' target='_self'>{linkText}</a>"
     else
         linkText
