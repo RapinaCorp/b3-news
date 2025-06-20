@@ -202,4 +202,4 @@ let getHtmlLink (url: string) (linkText: string) : string =
         let localPdfUrl = $"/pdf/{nid}"
         $"<a href='{localPdfUrl}' target='_self'>{linkText}</a>"
     else
-        linkText
+        $"<a href='{url}' target='_self'>{linkText}</a>"
