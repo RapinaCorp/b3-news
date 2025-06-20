@@ -7,6 +7,7 @@ open System.IO
 open System.Security.Cryptography
 open System.Text
 open System.IO.Compression
+open System.Text.Json
 
 open Lib
 open News
@@ -162,3 +163,76 @@ let fetchNewsDetails (codes: string list) (d1: string) (d2: string) : Result<New
         | Ok nwsmsgs' -> transform nwsMsgToNewsDetail nwsmsgs'
         | Error errorMessage -> Error errorMessage
     | News.Failure ex -> Error ex.Message
+
+let updateNewsDetailsToJson (codes: string list) (startDate: string) (endDate: string) (jsonPath: string) =
+    let jsonSerializerOptions =
+        JsonSerializerOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)
+
+    let tryReadExistingNewsDetails (path: string) : Result<NewsDetail list, string> =
+        if File.Exists path then
+            try
+                let json = File.ReadAllText path
+                Ok <| JsonSerializer.Deserialize<NewsDetail list>(json, jsonSerializerOptions)
+            with
+            | :? JsonException as ex -> Error $"JSON deserialization error: {ex.Message}"
+            | ex -> Error $"Error reading or deserializing existing JSON: {ex.Message}"
+        else
+            Ok [] // If file doesn't exist, it's not an error; just start with an empty list
+
+    match fetchNewsDetails codes startDate endDate with // Fetch new news details
+    | Error err -> Error err // Propagate error from fetchNewsDetails
+    | Ok newDetails ->
+        match tryReadExistingNewsDetails jsonPath with
+        | Error err -> Error $"Failed to read existing news details: {err}"
+        | Ok existingDetails ->
+            // Use a Set for efficient checking of existing items
+            let existingSet =
+                existingDetails
+                |> Set.ofList
+                |> Set.map (fun nd -> nd.ticker, nd.dateTime, nd.filename, nd.url) // Create a set of unique keys
+
+            // Filter out new details that already exist in the set
+            let trulyNewDetails =
+                newDetails
+                |> List.filter (fun nd -> not (existingSet.Contains(nd.ticker, nd.dateTime, nd.filename, nd.url)))
+
+            let mergedDetails = trulyNewDetails @ existingDetails // Append new details to existing ones
+
+            // Re-apply distinctBy to ensure absolute uniqueness and handle potential duplicates from 'newDetails' itself
+            // or if 'existingDetails' had internal duplicates (though less likely if always written distinctly).
+            let uniqueDetails =
+                mergedDetails
+                |> List.distinctBy (fun nd -> nd.ticker, nd.dateTime, nd.filename, nd.url)
+                |> List.sortBy (fun nd -> nd.dateTime) // Optional: Sort for consistent output
+
+            try
+                let json = JsonSerializer.Serialize(uniqueDetails, jsonSerializerOptions)
+                File.WriteAllText(jsonPath, json)
+                Ok(trulyNewDetails.Length) // Return the number of new entries added
+            with ex ->
+                Error $"Error writing JSON file: {ex.Message}"
+
+let getNewsDetailPageFromJson (jsonPath: string) (page': int) (pageSize': int) =
+    let readFileContent filePath =
+        if File.Exists filePath then
+            Some(File.ReadAllText filePath)
+        else
+            None
+
+    match readFileContent jsonPath with
+    | None -> Error $"The JSON file '{jsonPath}' does not exist."
+    | Some json ->
+        try
+            let pageSize = max 1 pageSize'
+            let details = JsonSerializer.Deserialize<NewsDetail list> json
+            let totalItems = details.Length
+            let totalPages = (totalItems + pageSize - 1) / pageSize
+            let page = min (max 1 page') totalPages
+
+            let pagedDetails =
+                details |> List.skip ((page - 1) * pageSize) |> List.take pageSize
+
+            Ok(pagedDetails, totalPages)
+        with
+        | :? JsonException as ex -> Error $"JSON deserialization error: {ex.Message}"
+        | ex -> Error $"An unexpected error occurred: {ex.Message}"

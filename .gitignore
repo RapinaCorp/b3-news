@@ -106,3 +106,4 @@ release/fsharp.js.LICENSE.txt
 news_cache
 
 .vscode
+reports.json
