@@ -1,0 +1,28 @@
+[Unit]
+Description=B3News
+After=network-online.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/prod/b3news
+ExecStart=/home/ubuntu/prod/b3news/B3News daemon
+
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+LogsDirectory=b3news
+LogsDirectoryMode=0755
+StandardOutput=journal
+StandardError=journal
+
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
