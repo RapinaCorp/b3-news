@@ -16,6 +16,8 @@
     <Compile Include="Lib.fs" />
     <Compile Include="News.fs" />
     <Compile Include="Details.fs" />
+    <Compile Include="JsonStore.fs" />
+    <Compile Include="Api.fs" />
     <Compile Include="List.fs" />
     <Compile Include="Fix.fs" />
     <Compile Include="WebServer.fs" />
@@ -25,6 +27,9 @@
     <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Thoth.Json.Net" Version="11.0.0" />
     <PackageReference Include="Microsoft.ML" Version="3.0.0-preview.22621.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="ML/data/B3NewsModel.zip" />

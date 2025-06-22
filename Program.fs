@@ -118,28 +118,7 @@ let rec main (args: string array) : int =
     | "resources" ->
         Predicitions.listResources ()
         0
-    | "json" ->
-        if args.Length < 3 then
-            usage ()
-            1
-        else
-            let d1 = args.[1]
-            let d2 = args.[2]
-            let codes = args |> Array.skip 3 |> Array.toList
-            match Details.updateNewsDetailsToJson codes d1 d2 "reports.json" with
-            | Ok n ->
-                Log.notice <| sprintf "- %d notícias atualizadas." n
-                match Details.getNewsDetailPageFromJson "reports.json" 1 15 with
-                | Ok(reports, pages) ->
-                    reports |> List.iter (fun r -> printfn "%s (%s) - %s" r.ticker r.dateTime r.url)
-                    printfn "Página 1 de %d" pages
-                | Error err -> Log.error <| sprintf "x Erro (json): %s" err
-                Log.notice "- reports.json atualizado."
-                0
-            | Error err ->
-                Log.error <| sprintf "x Erro (json): %s" err
-                1
-
+    | "json" -> Api.startApiServer args[1..]
     | command -> updateFiles command args[1..]
 
 and createIndex () =
