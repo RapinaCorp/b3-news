@@ -16,6 +16,7 @@ type NewsDetail =
     { ticker: string
       dateTime: string
       filename: string
+      reportType: string
       url: string }
 
 let detailsCacheDir = "news_cache"
@@ -138,6 +139,10 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
                         { ticker = nwsmsg.ticker |> Option.defaultValue ""
                           dateTime = ndateTime
                           filename = filename
+                          reportType =
+                            match List.tryParseReportFromFilename filename with
+                            | Some r -> r.name
+                            | None -> ""
                           url = getURL details }
                     )
     }

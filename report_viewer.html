@@ -7,6 +7,11 @@
     <title>Stock Reports</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        };
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -56,28 +61,13 @@
                 <!-- Config Icon -->
                 <button id="configBtn"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
-                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor"
-                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.245.149.404.227.558.303.356.177.67.35.952.507.28.156.536.29.77.404.148.077.29.148.423.212.133.064.258.117.375.163.117.045.228.082.333.109.105.027.199.04.286.04ZM12 12.75a.75.75 0 100-1.5.75.75 0 000 1.5Z">
-                        </path>
-                    </svg>
+                    ⚙️
                 </button>
                 <!-- Dark/Light Mode Toggle -->
                 <button id="themeToggle"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
-                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" id="moonIcon" fill="none"
-                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z">
-                        </path>
-                    </svg>
-                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400 hidden" id="sunIcon" fill="none"
-                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 3v1m0 16v1m9-9h1M4 12H3m15.325 6.675l-.707.707M6.318 6.318l-.707-.707m12.728 0l-.707-.707M6.318 17.682l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
-                        </path>
-                    </svg>
+                    <span id="moonIcon">🌙</span>
+                    <span id="sunIcon" class="hidden">☀️</span>
                 </button>
             </div>
         </header>
@@ -158,6 +148,7 @@
                     <input type="text" id="tickerFilter"
                         class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
                 </div>
+                <!--
                 <div>
                     <label for="startDateFilter"
                         class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date:</label>
@@ -170,6 +161,7 @@
                     <input type="date" id="endDateFilter"
                         class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
                 </div>
+                -->
             </div>
             <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
                 <button id="cancelCloseConfigBtn"
@@ -212,8 +204,8 @@
         const configBtn = document.getElementById('configBtn');
         const configModal = document.getElementById('configModal');
         const tickerFilterInput = document.getElementById('tickerFilter');
-        const startDateFilterInput = document.getElementById('startDateFilter');
-        const endDateFilterInput = document.getElementById('endDateFilter');
+        // const startDateFilterInput = document.getElementById('startDateFilter');
+        // const endDateFilterInput = document.getElementById('endDateFilter');
         const cancelCloseConfigBtn = document.getElementById('cancelCloseConfigBtn');
         const saveConfigBtn = document.getElementById('saveConfigBtn');
         const saveReloadConfigBtn = document.getElementById('saveReloadConfigBtn');
@@ -298,8 +290,8 @@
         function openConfigModal() {
             // Populate modal inputs with current config
             tickerFilterInput.value = currentConfig.ticker;
-            startDateFilterInput.value = currentConfig.startDate;
-            endDateFilterInput.value = currentConfig.endDate;
+            // startDateFilterInput.value = currentConfig.startDate;
+            // endDateFilterInput.value = currentConfig.endDate;
 
             configChanged = false; // Reset changed state
             updateConfigButtons(); // Update button text
@@ -368,12 +360,12 @@
                     }
                 }
                 // Assuming the API also supports StartDate and EndDate parameters
-                if (currentConfig.startDate) {
-                    params.append('StartDate', currentConfig.startDate);
-                }
-                if (currentConfig.endDate) {
-                    params.append('EndDate', currentConfig.endDate);
-                }
+                // if (currentConfig.startDate) {
+                //     params.append('StartDate', currentConfig.startDate);
+                // }
+                // if (currentConfig.endDate) {
+                //     params.append('EndDate', currentConfig.endDate);
+                // }
 
                 // IMPORTANT: Replace this URL with your actual backend endpoint.
                 // This is a placeholder for demonstration purposes and assumes a local server is running.
@@ -455,7 +447,7 @@
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                        <a href="${report.url}" rel="noopener noreferrer">${report.type || 'N/A'}</a>
+                        <a href="${report.url}" rel="noopener noreferrer">${report.reportType || 'N/A'}</a>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
@@ -617,12 +609,39 @@
          */
         function saveConfig() {
             currentConfig.ticker = tickerFilterInput.value.trim();
-            currentConfig.startDate = startDateFilterInput.value;
-            currentConfig.endDate = endDateFilterInput.value;
+            // currentConfig.startDate = startDateFilterInput.value;
+            // currentConfig.endDate = endDateFilterInput.value;
+            // Save config to localStorage
+            localStorage.setItem('reportViewerConfig', JSON.stringify(currentConfig));
             configChanged = false; // Reset changed state after saving
             updateConfigButtons();
             closeConfigModal();
         }
+
+        // Load config from localStorage on page load
+        function loadConfigFromLocalStorage() {
+            const saved = localStorage.getItem('reportViewerConfig');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && typeof parsed === 'object') {
+                        currentConfig.ticker = parsed.ticker || '';
+                        // currentConfig.startDate = parsed.startDate || '';
+                        // currentConfig.endDate = parsed.endDate || '';
+                    }
+                    fetchData();
+                } catch { }
+            }
+        }
+
+        // Call loadConfigFromLocalStorage when the page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            loadConfigFromLocalStorage();
+            // If you want to update the UI with loaded config:
+            tickerFilterInput.value = currentConfig.ticker;
+            // startDateFilterInput.value = currentConfig.startDate;
+            // endDateFilterInput.value = currentConfig.endDate;
+        });
 
         // --- Event Listeners ---
 
@@ -651,8 +670,8 @@
 
         // Event listeners for config input changes to mark as changed
         tickerFilterInput.addEventListener('input', markConfigChanged);
-        startDateFilterInput.addEventListener('change', markConfigChanged);
-        endDateFilterInput.addEventListener('change', markConfigChanged);
+        // startDateFilterInput.addEventListener('change', markConfigChanged);
+        // endDateFilterInput.addEventListener('change', markConfigChanged);
 
         // Close modal when clicking outside content
         configModal.addEventListener('click', (event) => {
@@ -678,5 +697,3 @@
         });
     </script>
 </body>
-
-</html>
