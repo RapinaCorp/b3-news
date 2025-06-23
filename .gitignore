@@ -2,11 +2,14 @@ bin
 obj
 *.txt
 *.pdf
-*.html
-!index_template.html
-!reports_template.html
 report/*
 *.zip
+*.html
+
+# Exceptions
+!index_template.html
+!reports_template.html
+!report_viewer.html
 !testdata.txt
 !traindata.txt
 

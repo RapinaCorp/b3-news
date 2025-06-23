@@ -33,6 +33,7 @@ let private parseQuery (query: IQueryCollection) =
       Page = getIntValue "page" 1
       PageSize = getIntValue "pageSize" 20 }
 
+// Response helpers
 let private writeJsonResponse (ctx: HttpContext) statusCode data =
     async {
         ctx.Response.StatusCode <- int statusCode
@@ -45,6 +46,7 @@ let private writeJsonResponse (ctx: HttpContext) statusCode data =
 let private writeErrorResponse (ctx: HttpContext) statusCode message =
     writeJsonResponse ctx statusCode {| error = message |}
 
+// API handlers
 let handleLoadPagedNews (ctx: HttpContext) =
     async {
         try

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Reports</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Custom scrollbar for dark mode */
+        .dark ::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            /* darker grey */
+            border-radius: 8px;
+        }
+
+        .dark ::-webkit-scrollbar-track {
+            background-color: #2d3748;
+            /* even darker grey */
+        }
+
+        /* Styling for the modal background and content */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 3px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Hide filename column on small screens */
+        @media (max-width: 768px) {
+            .hide-on-mobile {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col items-center p-4">
+
+    <div id="app"
+        class="w-full max-w-6xl bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
+        <!-- Header -->
+        <header class="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
+            <h1 class="text-3xl font-semibold text-gray-800 dark:text-gray-200">Stock Reports</h1>
+            <div class="flex items-center space-x-4">
+                <!-- Config Icon -->
+                <button id="configBtn"
+                    class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
+                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.245.149.404.227.558.303.356.177.67.35.952.507.28.156.536.29.77.404.148.077.29.148.423.212.133.064.258.117.375.163.117.045.228.082.333.109.105.027.199.04.286.04ZM12 12.75a.75.75 0 100-1.5.75.75 0 000 1.5Z">
+                        </path>
+                    </svg>
+                </button>
+                <!-- Dark/Light Mode Toggle -->
+                <button id="themeToggle"
+                    class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
+                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" id="moonIcon" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z">
+                        </path>
+                    </svg>
+                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-400 hidden" id="sunIcon" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v1m0 16v1m9-9h1M4 12H3m15.325 6.675l-.707.707M6.318 6.318l-.707-.707m12.728 0l-.707-.707M6.318 17.682l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden flex items-center justify-center p-4 text-blue-600 dark:text-blue-400">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600 dark:text-blue-400"
+                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                </path>
+            </svg>
+            Fetching data...
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="ticker">
+                            Ticker
+                            <span id="tickerSortIcon" class="inline-block ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="type">
+                            Report Type
+                            <span id="typeSortIcon" class="inline-block ml-1"></span>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="dateTime">
+                            Date & Time
+                            <span id="dateTimeSortIcon" class="inline-block ml-1"></span>
+                        </th>
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hide-on-mobile">
+                            File Name
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="reportTableBody"
+                    class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    <!-- Data will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div
+            class="flex flex-col sm:flex-row justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4 sm:space-y-0">
+            <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Items per page:</span>
+                <select id="itemsPerPageSelect"
+                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div id="paginationControls" class="flex flex-wrap justify-center items-center gap-2">
+                <!-- Pagination buttons will be inserted here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="fixed inset-0 hidden flex items-center justify-center p-4 z-50 modal-overlay">
+        <div
+            class="modal-content bg-white dark:bg-gray-800 rounded-xl p-8 space-y-6 w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-xl transition-all duration-300 transform scale-95 opacity-0">
+            <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-200 text-center">Configuration</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="tickerFilter"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ticker Code(s)
+                        (comma-separated):</label>
+                    <input type="text" id="tickerFilter"
+                        class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="startDateFilter"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date:</label>
+                    <input type="date" id="startDateFilter"
+                        class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="endDateFilter"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date:</label>
+                    <input type="date" id="endDateFilter"
+                        class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
+                <button id="cancelCloseConfigBtn"
+                    class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors duration-200">Close</button>
+                <button id="saveConfigBtn"
+                    class="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200">Save
+                    Config</button>
+                <button id="saveReloadConfigBtn"
+                    class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200">Save
+                    & Reload Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for data and state
+        let allReports = []; // Stores the 'news' array from the current fetched page
+        let filteredReports = []; // Stores the data after applying client-side sorting
+        let currentPage = 1;
+        let itemsPerPage = 20;
+        let totalPagesFromServer = 0; // New variable to store total pages from server
+        let sortColumn = null;
+        let sortDirection = 'asc'; // 'asc' or 'desc'
+        let currentConfig = {
+            ticker: '',
+            startDate: '',
+            endDate: ''
+        };
+        let configChanged = false; // To track changes in config modal
+
+        // DOM Elements
+        const appDiv = document.getElementById('app');
+        const reportTableBody = document.getElementById('reportTableBody');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const itemsPerPageSelect = document.getElementById('itemsPerPageSelect');
+        const paginationControls = document.getElementById('paginationControls');
+        const themeToggle = document.getElementById('themeToggle');
+        const moonIcon = document.getElementById('moonIcon');
+        const sunIcon = document.getElementById('sunIcon');
+        const configBtn = document.getElementById('configBtn');
+        const configModal = document.getElementById('configModal');
+        const tickerFilterInput = document.getElementById('tickerFilter');
+        const startDateFilterInput = document.getElementById('startDateFilter');
+        const endDateFilterInput = document.getElementById('endDateFilter');
+        const cancelCloseConfigBtn = document.getElementById('cancelCloseConfigBtn');
+        const saveConfigBtn = document.getElementById('saveConfigBtn');
+        const saveReloadConfigBtn = document.getElementById('saveReloadConfigBtn');
+        const tableHeaders = document.querySelectorAll('th[data-sort-by]');
+
+        // --- Utility Functions ---
+
+        /**
+         * Shows the loading indicator.
+         */
+        function showLoading() {
+            loadingIndicator.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the loading indicator.
+         */
+        function hideLoading() {
+            loadingIndicator.classList.add('hidden');
+        }
+
+        /**
+         * Formats a date string to a more readable format.
+         * @param {string} dateString - The date string from the JSON.
+         * @returns {string} Formatted date string.
+         */
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            if (isNaN(date)) {
+                return dateString; // Return original if invalid date
+            }
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        /**
+         * Toggles dark mode on/off and saves preference to localStorage.
+         */
+        function toggleDarkMode() {
+            const htmlElement = document.documentElement;
+            if (htmlElement.classList.contains('dark')) {
+                htmlElement.classList.remove('dark');
+                htmlElement.classList.add('light');
+                localStorage.setItem('theme', 'light');
+                moonIcon.classList.remove('hidden');
+                sunIcon.classList.add('hidden');
+            } else {
+                htmlElement.classList.remove('light');
+                htmlElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+                moonIcon.classList.add('hidden');
+                sunIcon.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Initializes the theme based on localStorage.
+         */
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+                moonIcon.classList.add('hidden');
+                sunIcon.classList.remove('hidden');
+            } else {
+                document.documentElement.classList.add('light');
+                moonIcon.classList.remove('hidden');
+                sunIcon.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Displays the configuration modal.
+         */
+        function openConfigModal() {
+            // Populate modal inputs with current config
+            tickerFilterInput.value = currentConfig.ticker;
+            startDateFilterInput.value = currentConfig.startDate;
+            endDateFilterInput.value = currentConfig.endDate;
+
+            configChanged = false; // Reset changed state
+            updateConfigButtons(); // Update button text
+
+            configModal.classList.remove('hidden');
+            // Animate modal entry
+            setTimeout(() => {
+                configModal.querySelector('.modal-content').classList.remove('scale-95', 'opacity-0');
+                configModal.querySelector('.modal-content').classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        /**
+         * Hides the configuration modal.
+         */
+        function closeConfigModal() {
+            // Animate modal exit
+            configModal.querySelector('.modal-content').classList.remove('scale-100', 'opacity-100');
+            configModal.querySelector('.modal-content').classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                configModal.classList.add('hidden');
+            }, 300); // Wait for animation to complete
+        }
+
+        /**
+         * Updates the text of the "Close/Cancel" button based on configChanged state.
+         */
+        function updateConfigButtons() {
+            if (configChanged) {
+                cancelCloseConfigBtn.textContent = 'Cancel';
+                cancelCloseConfigBtn.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+                cancelCloseConfigBtn.classList.add('bg-red-500', 'hover:bg-red-600', 'text-white');
+            } else {
+                cancelCloseConfigBtn.textContent = 'Close';
+                cancelCloseConfigBtn.classList.add('bg-gray-200', 'hover:bg-gray-300');
+                cancelCloseConfigBtn.classList.remove('bg-red-500', 'hover:bg-red-600', 'text-white');
+            }
+        }
+
+        /**
+         * Sets configChanged to true and updates the button text.
+         */
+        function markConfigChanged() {
+            configChanged = true;
+            updateConfigButtons();
+        }
+
+        // --- Data Handling ---
+
+        /**
+         * Fetches data from the API based on current pagination and filter settings.
+         */
+        async function fetchData() {
+            showLoading();
+            try {
+                // Construct query parameters
+                const params = new URLSearchParams();
+                params.append('PageSize', itemsPerPage);
+                params.append('Page', currentPage);
+
+                if (currentConfig.ticker) {
+                    // Split by comma and trim each ticker, then join back for the API
+                    const tickers = currentConfig.ticker.split(',').map(t => t.trim()).filter(t => t);
+                    if (tickers.length > 0) {
+                        params.append('Codes', tickers.join(','));
+                    }
+                }
+                // Assuming the API also supports StartDate and EndDate parameters
+                if (currentConfig.startDate) {
+                    params.append('StartDate', currentConfig.startDate);
+                }
+                if (currentConfig.endDate) {
+                    params.append('EndDate', currentConfig.endDate);
+                }
+
+                // IMPORTANT: Replace this URL with your actual backend endpoint.
+                // This is a placeholder for demonstration purposes and assumes a local server is running.
+                const apiUrl = `http://localhost:8082/api/news?${params.toString()}`;
+                console.log("Fetching from:", apiUrl); // For debugging purposes
+
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Update allReports with the 'news' array from the fetched page
+                allReports = data.news || [];
+                totalPagesFromServer = data.totalPages || 0; // Get total pages from server response
+
+                // Apply client-side sorting to the current page's data
+                filteredReports = [...allReports];
+                applySort();
+
+                renderTable();
+                renderPaginationControls();
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-500">Failed to load data. Please try again. (Ensure the backend server is running on localhost:8082)</td></tr>`;
+                // Clear existing data and pagination on error
+                allReports = [];
+                filteredReports = [];
+                totalPagesFromServer = 0;
+                renderTable();
+                renderPaginationControls();
+            } finally {
+                hideLoading();
+            }
+        }
+
+        /**
+         * Applies client-side sorting to the current page's data.
+         */
+        function applySort() {
+            if (sortColumn) {
+                filteredReports.sort((a, b) => {
+                    let valA = a[sortColumn];
+                    let valB = b[sortColumn];
+
+                    // Special handling for date/dateTime sorting
+                    if (sortColumn === 'dateTime') { // Changed to 'dateTime'
+                        valA = new Date(valA);
+                        valB = new Date(valB);
+                    }
+
+                    if (valA < valB) {
+                        return sortDirection === 'asc' ? -1 : 1;
+                    }
+                    if (valA > valB) {
+                        return sortDirection === 'asc' ? 1 : -1;
+                    }
+                    return 0;
+                });
+            }
+        }
+
+        /**
+         * Renders the current page's data to the table.
+         */
+        function renderTable() {
+            reportTableBody.innerHTML = ''; // Clear existing rows
+
+            if (filteredReports.length === 0 && totalPagesFromServer === 0) {
+                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500 dark:text-gray-400">No reports found matching your criteria.</td></tr>`;
+            } else if (filteredReports.length === 0 && totalPagesFromServer > 0) {
+                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500 dark:text-gray-400">No reports for this page. Please navigate to another page.</td></tr>`;
+            }
+
+            filteredReports.forEach(report => {
+                const row = document.createElement('tr');
+                row.classList.add('hover:bg-gray-50', 'dark:hover:bg-gray-700', 'transition-colors', 'duration-150');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                        <a href="${report.url}" rel="noopener noreferrer">${report.type || 'N/A'}</a>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
+                        <a href="${report.url}" rel="noopener noreferrer">${report.filename || 'N/A'}</a>
+                    </td>
+                `;
+                reportTableBody.appendChild(row);
+            });
+        }
+
+        /**
+         * Renders the pagination controls (page numbers, prev/next, etc.).
+         */
+        function renderPaginationControls() {
+            paginationControls.innerHTML = ''; // Clear existing controls
+
+            const totalPages = totalPagesFromServer; // Use total pages from server
+
+            if (totalPages <= 1) {
+                paginationControls.innerHTML = `<span class="text-sm text-gray-700 dark:text-gray-300">Page 1 of 1</span>`;
+                return;
+            }
+
+            const maxPagesToShow = 5; // Number of page numbers to show directly
+            let startPage, endPage;
+
+            if (totalPages <= maxPagesToShow) {
+                startPage = 1;
+                endPage = totalPages;
+            } else {
+                const half = Math.floor(maxPagesToShow / 2);
+                if (currentPage <= half) {
+                    startPage = 1;
+                    endPage = maxPagesToShow;
+                } else if (currentPage + half >= totalPages) {
+                    startPage = totalPages - maxPagesToShow + 1;
+                    endPage = totalPages;
+                } else {
+                    startPage = currentPage - half;
+                    endPage = currentPage + half;
+                }
+            }
+
+            // Helper function to create a button
+            const createPageButton = (text, pageNum, isDisabled = false, isActive = false) => {
+                const button = document.createElement('button');
+                button.textContent = text;
+                button.classList.add(
+                    'px-3', 'py-1.5', 'rounded-lg', 'text-sm', 'font-medium', 'transition-colors', 'duration-200',
+                    'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500'
+                );
+                if (isActive) {
+                    button.classList.add('bg-blue-500', 'text-white');
+                } else if (isDisabled) {
+                    button.classList.add('bg-gray-200', 'text-gray-400', 'dark:bg-gray-700', 'dark:text-gray-500', 'cursor-not-allowed');
+                    button.disabled = true;
+                } else {
+                    button.classList.add('bg-gray-50', 'hover:bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:hover:bg-gray-600', 'dark:text-gray-300');
+                    button.addEventListener('click', () => goToPage(pageNum));
+                }
+                return button;
+            };
+
+            // "Previous" button
+            paginationControls.appendChild(createPageButton('Previous', currentPage - 1, currentPage === 1));
+
+            // "First" page button and ellipsis
+            if (startPage > 1) {
+                paginationControls.appendChild(createPageButton('1', 1));
+                if (startPage > 2) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.textContent = '...';
+                    ellipsis.classList.add('px-3', 'py-1.5', 'text-sm', 'text-gray-700', 'dark:text-gray-300');
+                    paginationControls.appendChild(ellipsis);
+                }
+            }
+
+            // Page numbers
+            for (let i = startPage; i <= endPage; i++) {
+                paginationControls.appendChild(createPageButton(String(i), i, false, i === currentPage));
+            }
+
+            // "Last" page button and ellipsis
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.textContent = '...';
+                    ellipsis.classList.add('px-3', 'py-1.5', 'text-sm', 'text-gray-700', 'dark:text-gray-300');
+                    paginationControls.appendChild(ellipsis);
+                }
+                paginationControls.appendChild(createPageButton(String(totalPages), totalPages));
+            }
+
+            // "Next" button
+            paginationControls.appendChild(createPageButton('Next', currentPage + 1, currentPage === totalPages));
+        }
+
+        /**
+         * Navigates to a specific page and re-fetches data.
+         * @param {number} pageNum - The page number to navigate to.
+         */
+        function goToPage(pageNum) {
+            if (pageNum >= 1 && pageNum <= totalPagesFromServer) {
+                currentPage = pageNum;
+                fetchData(); // Re-fetch data for the new page
+            }
+        }
+
+        /**
+         * Handles changing the number of items displayed per page.
+         * @param {Event} event - The change event from the select element.
+         */
+        function changeItemsPerPage(event) {
+            itemsPerPage = parseInt(event.target.value, 10);
+            currentPage = 1; // Reset to first page
+            fetchData(); // Re-fetch data with new items per page
+        }
+
+        /**
+         * Sorts the table by the given column.
+         * Note: This currently sorts only the data on the current page.
+         * For full sorting across all data, server-side sorting would be needed.
+         * @param {string} column - The column to sort by.
+         */
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            updateSortIcons();
+            applySort(); // Re-apply sort to the current page's data
+            renderTable(); // Re-render table with sorted data
+        }
+
+        /**
+         * Updates the sort icons in the table headers.
+         */
+        function updateSortIcons() {
+            document.querySelectorAll('th[data-sort-by] span').forEach(span => {
+                // Clear all previous sort icons, except for the one being sorted
+                const sortBy = span.parentNode.getAttribute('data-sort-by');
+                if (sortBy !== sortColumn) {
+                    span.textContent = '';
+                }
+            });
+
+            if (sortColumn) {
+                const sortIconSpan = document.getElementById(`${sortColumn}SortIcon`);
+                if (sortIconSpan) {
+                    sortIconSpan.textContent = sortDirection === 'asc' ? ' ▲' : ' ▼';
+                }
+            }
+        }
+
+        /**
+         * Saves the current config from the modal inputs to currentConfig.
+         */
+        function saveConfig() {
+            currentConfig.ticker = tickerFilterInput.value.trim();
+            currentConfig.startDate = startDateFilterInput.value;
+            currentConfig.endDate = endDateFilterInput.value;
+            configChanged = false; // Reset changed state after saving
+            updateConfigButtons();
+            closeConfigModal();
+        }
+
+        // --- Event Listeners ---
+
+        itemsPerPageSelect.addEventListener('change', changeItemsPerPage);
+
+        // Theme toggle
+        themeToggle.addEventListener('click', toggleDarkMode);
+
+        // Config button
+        configBtn.addEventListener('click', openConfigModal);
+
+        // Config modal buttons
+        cancelCloseConfigBtn.addEventListener('click', () => {
+            closeConfigModal();
+        });
+        saveConfigBtn.addEventListener('click', () => {
+            saveConfig();
+            // No need to call applySort or renderTable here directly, as fetchData will do it.
+            // fetchData() will be called by saveReloadConfigBtn if that's pressed, or manually refresh.
+        });
+        saveReloadConfigBtn.addEventListener('click', () => {
+            saveConfig();
+            currentPage = 1; // Reset to first page on reload
+            fetchData(); // Re-fetch data with new config
+        });
+
+        // Event listeners for config input changes to mark as changed
+        tickerFilterInput.addEventListener('input', markConfigChanged);
+        startDateFilterInput.addEventListener('change', markConfigChanged);
+        endDateFilterInput.addEventListener('change', markConfigChanged);
+
+        // Close modal when clicking outside content
+        configModal.addEventListener('click', (event) => {
+            if (event.target === configModal) {
+                closeConfigModal();
+            }
+        });
+
+        // Table header sorting
+        tableHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const sortBy = header.getAttribute('data-sort-by');
+                if (sortBy) {
+                    sortTable(sortBy);
+                }
+            });
+        });
+
+        // --- Initialize App ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme(); // Set initial theme
+            fetchData(); // Fetch initial data
+        });
+    </script>
+</body>
+
+</html>
