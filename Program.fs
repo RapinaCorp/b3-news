@@ -119,6 +119,7 @@ let rec main (args: string array) : int =
         Predicitions.listResources ()
         0
     | "json" -> Api.startApiServer args[1..]
+    | "update" -> updateJson args[1..]
     | command -> updateFiles command args[1..]
 
 and createIndex () =
@@ -174,6 +175,26 @@ and reportsFile (args: string array) =
     printfn "- Listando relatórios entre %s e %s:" d1 d2
     printfn "  %A\n" codes
     match listReports codes d1 d2 with
+    | Ok _ -> 0
+    | Error err ->
+        Log.error <| sprintf "x Erro (list): %s" err
+        1
+
+and updateJson (args: string array) =
+    if args.Length < 3 then
+        usage ()
+    let d1 = args.[0]
+    let d2 =
+        if args.Length > 2 then
+            args.[1]
+        else
+            DateTime.Today.ToString("yyyy-MM-dd")
+    if not (isDateFormat d1) || not (isDateFormat d2) then
+        usage ()
+    let codes = Array.skip 2 args |> Array.toList
+    printfn "- Atualizando relatórios entre %s e %s:" d1 d2
+    printfn "  %A\n" codes
+    match JsonStore.updateNews codes d1 d2 with
     | Ok _ -> 0
     | Error err ->
         Log.error <| sprintf "x Erro (list): %s" err

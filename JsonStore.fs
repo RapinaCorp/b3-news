@@ -46,7 +46,7 @@ let paginate (pageSize: int) (page: int) (items: 'a list) : 'a list * int =
             (pagedItems, totalPages)
 
 
-let updateNews codes startDate endDate jsonPath : Result<int, string> =
+let updateNewsCust codes startDate endDate jsonPath : Result<int, string> =
     let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
 
     Details.fetchNewsDetails codes startDate endDate
@@ -62,6 +62,9 @@ let updateNews codes startDate endDate jsonPath : Result<int, string> =
 
             tryWrite jsonPath merged
             |> Result.map (fun () -> addedCount)))
+
+let updateNews codes startDate endDate : Result<int, string> =
+    updateNewsCust codes startDate endDate "reports.json"
 
 type SortOrder = Ascending | Descending
 
