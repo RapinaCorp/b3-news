@@ -175,6 +175,7 @@
         // Global variables for data and state
         let allReports = []; // Stores the 'news' array from the current fetched page
         let filteredReports = []; // Stores the data after applying client-side sorting
+        let searchCode = '';
         let currentPage = 1;
         let itemsPerPage = 20;
         let totalPagesFromServer = 0; // New variable to store total pages from server
@@ -207,7 +208,7 @@
         const saveReloadConfigBtn = document.getElementById('saveReloadConfigBtn');
         const tableHeaders = document.querySelectorAll('th[data-sort-by]');
 
-        // --- Initial setup ---
+        // --- Filter ---
 
         // Cria uma nova linha para os inputs
         const filterRow = document.createElement('tr');
@@ -251,9 +252,15 @@
             }
         }
 
+        function filtrarTabelaFetch() {
+            const filtros = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toUpperCase());
+            searchCode = filtros[0];
+            fetchData();
+        }
+
         // Adiciona o evento de debounce aos inputs
         filterRow.querySelectorAll('input').forEach(input => {
-            input.addEventListener('input', debounce(filtrarTabela, 300));
+            input.addEventListener('input', debounce(filtrarTabelaFetch, 600));
         });
 
 
@@ -401,9 +408,9 @@
                 params.append('PageSize', itemsPerPage);
                 params.append('Page', currentPage);
 
-                if (currentConfig.ticker) {
+                if (currentConfig.ticker || searchCode.length == 4) {
                     // Split by comma and trim each ticker, then join back for the API
-                    const tickers = currentConfig.ticker.split(',').map(t => t.trim()).filter(t => t);
+                    const tickers = searchCode.length > 0 ? [searchCode] : currentConfig.ticker.split(',').map(t => t.trim()).filter(t => t);
                     if (tickers.length > 0) {
                         params.append('Codes', tickers.join(','));
                     }
