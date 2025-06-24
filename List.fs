@@ -6,11 +6,7 @@ open System.Text.RegularExpressions
 
 let (+/) path1 path2 = Path.Combine(path1, path2)
 
-let stripLastUnderscore (str: string) =
-    if str.Length > 1 && str.[str.Length - 1] = '_' then
-        str.[0 .. str.Length - 2]
-    else
-        str
+let stripUnderscore (str: string) = str.Replace("_", " ")
 
 let listFilesWithRelativePaths (directoryPath: string) : string list =
     let files = Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories)
@@ -30,9 +26,9 @@ let tryParseReportFromFilename (url: string) : Report option =
     if matches.Count > 0 && matches.[0].Groups.Count > 3 then
         let m = matches.[0]
         Some
-            { date = (m.Groups.[1].ToString() |> stripLastUnderscore)
-              company = (m.Groups.[2].ToString() + m.Groups.[3].ToString() |> stripLastUnderscore)
-              name = (m.Groups.[4].ToString() |> stripLastUnderscore)
+            { date = (m.Groups.[1].ToString() |> stripUnderscore)
+              company = (m.Groups.[2].ToString() + m.Groups.[3].ToString() |> stripUnderscore)
+              name = (m.Groups.[4].ToString() |> stripUnderscore)
               url = url }
     else
         None

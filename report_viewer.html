@@ -176,6 +176,9 @@
         let allReports = []; // Stores the 'news' array from the current fetched page
         let filteredReports = []; // Stores the data after applying client-side sorting
         let searchCode = '';
+        let searchType = '';
+        let searchDate = '';
+        let searchFileName = '';
         let currentPage = 1;
         let itemsPerPage = 20;
         let totalPagesFromServer = 0; // New variable to store total pages from server
@@ -255,6 +258,9 @@
         function filtrarTabelaFetch() {
             const filtros = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toUpperCase());
             searchCode = filtros[0];
+            searchType = filtros[1];
+            searchDate = filtros[2];
+            searchFileName = filtros[3];
             fetchData();
         }
 
@@ -412,8 +418,17 @@
                     // Split by comma and trim each ticker, then join back for the API
                     const tickers = searchCode.length > 0 ? [searchCode] : currentConfig.ticker.split(',').map(t => t.trim()).filter(t => t);
                     if (tickers.length > 0) {
-                        params.append('Codes', tickers.join(','));
+                        params.append('codes', tickers.join(','));
                     }
+                }
+                if (searchType.length > 0) {
+                    params.append('reportType', searchType);
+                }
+                if (searchDate.length > 0) {
+                    params.append('date', searchDate);
+                }
+                if (searchFileName.length > 0) {
+                    params.append('fileName', searchFileName);
                 }
                 // Assuming the API also supports StartDate and EndDate parameters
                 // if (currentConfig.startDate) {

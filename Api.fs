@@ -9,6 +9,9 @@ open Microsoft.Extensions.Hosting
 
 type QueryParams =
     { Codes: string list
+      Date: string
+      Filename: string
+      ReportType: string
       Page: int
       PageSize: int }
 
@@ -30,6 +33,9 @@ let private parseQuery (query: IQueryCollection) =
     { Codes =
         getStringValue "codes" ""
         |> fun s -> if s = "" then [] else s.Split(',') |> Array.toList
+      Date = getStringValue "date" ""
+      Filename = getStringValue "filename" ""
+      ReportType = getStringValue "reportType" ""
       Page = getIntValue "page" 1
       PageSize = getIntValue "pageSize" 20 }
 
@@ -54,6 +60,9 @@ let handleLoadPagedNews (ctx: HttpContext) =
             let c =
                 DetailsQuery.newCriteria ()
                 |> DetailsQuery.withTickers p.Codes
+                |> DetailsQuery.withDateRange p.Date p.Date
+                |> DetailsQuery.withFilename p.Filename
+                |> DetailsQuery.withReportType p.ReportType
                 |> DetailsQuery.withPagination p.Page p.PageSize
 
             match JsonStore.loadPagedNewsWithCriteria "reports.json" c with
