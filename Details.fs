@@ -7,7 +7,6 @@ open System.IO
 open System.Security.Cryptography
 open System.Text
 open System.IO.Compression
-open System.Text.Json
 
 open Lib
 open News

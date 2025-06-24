@@ -51,11 +51,16 @@ let handleLoadPagedNews (ctx: HttpContext) =
     async {
         try
             let p = parseQuery ctx.Request.Query
-            match JsonStore.loadPagedNews p.Codes p.Page p.PageSize with
-            | Ok(news, totalPages) ->
+            let c =
+                DetailsQuery.newCriteria ()
+                |> DetailsQuery.withTickers p.Codes
+                |> DetailsQuery.withPagination p.Page p.PageSize
+
+            match JsonStore.loadPagedNewsWithCriteria "reports.json" c with
+            | Ok(r) ->
                 let response =
-                    {| news = news
-                       totalPages = totalPages |}
+                    {| news = r.Items
+                       totalPages = r.TotalPages |}
                 do! writeJsonResponse ctx HttpStatusCode.OK response
             | Error err -> do! writeErrorResponse ctx HttpStatusCode.BadRequest err
         with ex ->

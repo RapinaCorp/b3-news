@@ -2,6 +2,7 @@ module JsonStore
 
 open System.Text.Json
 open System.IO
+open DetailsQuery
 
 let private options = JsonSerializerOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)
 
@@ -19,34 +20,7 @@ let private tryWrite path details =
         Ok()
     with e -> Error $"Error writing JSON: {e.Message}"
 
-let paginate (pageSize: int) (page: int) (items: 'a list) : 'a list * int =
-    if pageSize <= 0 then
-        ([], 0)
-    else
-        let pageIndex = max 0 (page - 1)
-        let totalItems = List.length items
-        let totalPages =
-            if totalItems = 0 then 0
-            else (totalItems + pageSize - 1) / pageSize
-
-        let startIndex = pageIndex * pageSize
-
-        if pageIndex >= totalPages && totalItems > 0 then
-            ([], totalPages)
-        elif totalItems = 0 then
-            ([], 0)
-        else
-            let remainingItemsCount = totalItems - startIndex
-            let itemsToTake = min pageSize remainingItemsCount
-            let pagedItems =
-                items
-                |> List.skip startIndex
-                |> List.take itemsToTake
-
-            (pagedItems, totalPages)
-
-
-let updateNewsCust codes startDate endDate jsonPath : Result<int, string> =
+let updateNewsCust jsonPath codes startDate endDate : Result<int, string> =
     let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
 
     Details.fetchNewsDetails codes startDate endDate
@@ -64,25 +38,12 @@ let updateNewsCust codes startDate endDate jsonPath : Result<int, string> =
             |> Result.map (fun () -> addedCount)))
 
 let updateNews codes startDate endDate : Result<int, string> =
-    updateNewsCust codes startDate endDate "reports.json"
+    updateNewsCust "reports.json" codes startDate endDate
 
-type SortOrder = Ascending | Descending
-
-let loadPagedNewsCust codes page' pageSize' jsonPath sortByFn sortOrder : Result<Details.NewsDetail list * int, string> =
+let loadPagedNewsWithCriteria jsonPath (criteria: NewsFilterCriteria) : Result<PagedResult<Details.NewsDetail>, string> =
     tryRead jsonPath
     |> Result.bind (fun details ->
         if details.IsEmpty then
-            Error $"No news details found in the JSON file."
+            Error "No news details found in the JSON file."
         else
-            let filteredDetails = 
-                details |> List.filter (fun x -> List.contains x.ticker codes)
-            let sorted =
-                match sortOrder with
-                | Ascending -> filteredDetails |> List.sortBy sortByFn
-                | Descending -> filteredDetails |> List.sortByDescending sortByFn
-
-            let paged, totalPages = paginate pageSize' page' sorted
-            Ok (paged, totalPages))
-
-let loadPagedNews codes page' pageSize' = 
-    loadPagedNewsCust codes page' pageSize' "reports.json" (fun x -> x.dateTime) Descending
+            Ok <| DetailsQuery.filterAll criteria details)
