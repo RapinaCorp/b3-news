@@ -19,10 +19,10 @@
     <Compile Include="Details.fs" />
     <Compile Include="DetailsQuery.fs" />
     <Compile Include="JsonStore.fs" />
-    <Compile Include="Api.fs" />
+    <Compile Include="WebServer.fs" /><Compile Include="Api.fs" />
 
     <Compile Include="Fix.fs" />
-    <Compile Include="WebServer.fs" />
+    
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

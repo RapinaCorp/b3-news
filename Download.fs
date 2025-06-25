@@ -23,9 +23,7 @@ let fnetURL (url: string) : string option =
     let urlMatch = Regex.Match(url, pattern).Groups.[1].Value
 
     let newUrl =
-        "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id="
-        + urlMatch
-        + "&#toolbar=0"
+        "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=" + urlMatch
 
     if String.IsNullOrEmpty(urlMatch) then
         None
@@ -203,3 +201,14 @@ let getHtmlLink (url: string) (linkText: string) : string =
         $"<a href='{localPdfUrl}' target='_self'>{linkText}</a>"
     else
         $"<a href='{url}' target='_self'>{linkText}</a>"
+
+let getRealUrl (url: string) : string =
+    if Regex.IsMatch(url, patternFnet) then
+        match fnetURL url with
+        | Some directUrl -> directUrl
+        | None -> url
+    elif Regex.IsMatch(url, patternEnet) then
+        let nid = Regex.Match(url, patternEnet).Groups.[1].Value
+        $"/pdf/{nid}"
+    else
+        url

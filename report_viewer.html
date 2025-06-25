@@ -19,6 +19,13 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
+        table td:first-child,
+        table th:first-child {
+            width: 70px;
+            max-width: 70px;
+            white-space: nowrap;
+        }
+
         /* Custom scrollbar for dark mode */
         .dark ::-webkit-scrollbar-thumb {
             background-color: #4a5568;
@@ -53,10 +60,10 @@
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col items-center p-4">
 
     <div id="app"
-        class="w-full max-w-6xl bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
+        class="w-full max-w-[calc(90%)] bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
         <!-- Header -->
         <header class="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
-            <h1 class="text-3xl font-semibold text-gray-800 dark:text-gray-200">Stock Reports</h1>
+            <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-200">Relatórios de Empresas e FIIs</h1>
             <div class="flex items-center space-x-4">
                 <!-- Config Icon -->
                 <button id="configBtn"
@@ -89,19 +96,20 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead id="reportTableHeader" class="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
-                            data-sort-by="ticker">Ticker <span id="tickerSortIcon" class="inline-block ml-1"></span>
+                        <th class="px-1 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="code">Empresa <span id="codeSortIcon" class="inline-block"></span>
                         </th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
-                            data-sort-by="type"> Report Type <span id="typeSortIcon" class="inline-block ml-1"></span>
-                        </th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
-                            data-sort-by="dateTime"> Date & Time <span id="dateTimeSortIcon"
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="type"> Tipo de Relatório <span id="typeSortIcon"
                                 class="inline-block ml-1"></span>
                         </th>
-                        <th
-                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hide-on-mobile">
-                            File Name
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                            data-sort-by="dateTime"> Data & Hora <span id="dateTimeSortIcon"
+                                class="inline-block ml-1"></span>
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hide-on-mobile"
+                            data-sort-by="filename">
+                            Nome do Arquivo <span id="filenameSortIcon" class="inline-block ml-1"></span>
                         </th>
                     </tr>
                 </thead>
@@ -217,18 +225,20 @@
         const filterRow = document.createElement('tr');
         const headerRow = reportTableHeader.rows[0];
         const colunas = headerRow.cells.length;
-        for (let i = 0; i < colunas; i++) {
-            const th = document.createElement('th');
-            const input = document.createElement('input');
-            input.type = 'search';
-            input.placeholder = `Filtrar ${headerRow.cells[i].textContent.trim()}`;
-            input.dataset.coluna = i;
-            // set input class for styling
-            input.className = 'text-xs w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
-            th.appendChild(input);
-            filterRow.appendChild(th);
-        }
-        reportTableHeader.appendChild(filterRow);
+
+        (function createFilterInput() {
+            for (let i = 0; i < colunas; i++) {
+                const th = document.createElement('th');
+                const input = document.createElement('input');
+                input.type = 'search';
+                input.placeholder = `Filtrar ${headerRow.cells[i].textContent.trim()}`;
+                input.dataset.coluna = i;
+                input.className = 'text-xs w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+                th.appendChild(input);
+                filterRow.appendChild(th);
+            }
+            reportTableHeader.appendChild(filterRow);
+        })();
 
         function debounce(fn, delay) {
             let timeout;
@@ -411,8 +421,8 @@
             try {
                 // Construct query parameters
                 const params = new URLSearchParams();
-                params.append('PageSize', itemsPerPage);
-                params.append('Page', currentPage);
+                params.append('pageSize', itemsPerPage);
+                params.append('page', currentPage);
 
                 if (currentConfig.ticker || searchCode.length == 4) {
                     // Split by comma and trim each ticker, then join back for the API
@@ -438,9 +448,12 @@
                 //     params.append('EndDate', currentConfig.endDate);
                 // }
 
-                // IMPORTANT: Replace this URL with your actual backend endpoint.
-                // This is a placeholder for demonstration purposes and assumes a local server is running.
-                const apiUrl = `http://localhost:8082/api/news?${params.toString()}`;
+                if (sortColumn) {
+                    params.append('sortBy', sortColumn);
+                    params.append('sortDirection', sortDirection);
+                }
+
+                const apiUrl = `/api/news?${params.toString()}`;
                 console.log("Fetching from:", apiUrl); // For debugging purposes
 
                 const response = await fetch(apiUrl);
@@ -455,8 +468,9 @@
 
                 // Apply client-side sorting to the current page's data
                 filteredReports = [...allReports];
-                applySort();
+                // applySort();
 
+                currentPage = 1;
                 renderTable();
                 renderPaginationControls();
 
@@ -471,6 +485,8 @@
                 renderPaginationControls();
             } finally {
                 hideLoading();
+                // jump to the top of the table after fetching data
+                appDiv.scrollIntoView({ behavior: 'smooth' });
             }
         }
 
@@ -516,13 +532,13 @@
                 const row = document.createElement('tr');
                 row.classList.add('hover:bg-gray-50', 'dark:hover:bg-gray-700', 'transition-colors', 'duration-150');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                        <a href="${report.url}" rel="noopener noreferrer">${report.reportType || 'N/A'}</a>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                        <a href="${report.url}" rel="noopener noreferrer" class="visited:text-purple-600">${report.reportType || 'N/A'}</a>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
-                        <a href="${report.url}" rel="noopener noreferrer">${report.filename || 'N/A'}</a>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
+                        <a href="${report.url}" rel="noopener noreferrer" class="visited:text-purple-600">${report.filename || 'N/A'}</a>
                     </td>
                 `;
                 reportTableBody.appendChild(row);
@@ -651,7 +667,8 @@
                 sortDirection = 'asc';
             }
             updateSortIcons();
-            applySort(); // Re-apply sort to the current page's data
+            // applySort(); // Re-apply sort to the current page's data
+            fetchData(); // Re-fetch data to apply sorting
             renderTable(); // Re-render table with sorted data
         }
 

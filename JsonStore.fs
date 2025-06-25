@@ -25,10 +25,12 @@ let updateNewsCust jsonPath codes startDate endDate : Result<int, string> =
 
     Details.fetchNewsDetails codes startDate endDate
     |> Result.bind (fun newDetails ->
+        let newDetailsTransformed =
+            newDetails |> List.map (fun nd -> { nd with url = Download.getRealUrl nd.url })
         tryRead jsonPath
         |> Result.bind (fun existing ->
             let merged =
-                newDetails @ existing
+                newDetailsTransformed @ existing
                 |> List.distinctBy key
                 |> List.sortByDescending (_.dateTime)
 
