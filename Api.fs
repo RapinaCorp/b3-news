@@ -12,7 +12,7 @@ open System.Collections.Generic
 
 type QueryParams =
     { Codes: string list
-      Date: string
+      Dates: string * string
       Filename: string
       ReportType: string
       SortBy: DetailsQuery.SortField
@@ -50,7 +50,15 @@ let private parseQuery (query: IQueryCollection) =
     { Codes =
         getStringValue "codes" ""
         |> fun s -> if s = "" then [] else s.Split(',') |> Array.toList
-      Date = getStringValue "date" ""
+
+      Dates =
+        // Expecting date format "YYYY-MM-DD - YYYY-MM-DD" or just "YYYY-MM-DD"
+        match getStringValue "date" "" with
+        | "" -> "", ""
+        | s ->
+            s.Split('-')
+            |> fun arr -> arr.[0].Trim(), (if arr.Length > 1 then arr.[1].Trim() else arr.[0].Trim())
+
       Filename = getStringValue "filename" ""
       ReportType = getStringValue "reportType" ""
       SortBy = getSortField
@@ -79,7 +87,7 @@ let handleLoadPagedNews (ctx: HttpContext) =
             let c =
                 DetailsQuery.newCriteria ()
                 |> DetailsQuery.withTickers p.Codes
-                |> DetailsQuery.withDateRange p.Date p.Date
+                |> DetailsQuery.withDateRange (fst p.Dates) (snd p.Dates)
                 |> DetailsQuery.withFilename p.Filename
                 |> DetailsQuery.withReportType p.ReportType
                 |> DetailsQuery.withPagination p.Page p.PageSize

@@ -12,7 +12,20 @@
             darkMode: 'class',
         };
     </script>
+
+    <!-- Date Range Picker - github.com/alumuko/vanilla-datetimerange-picker -->
+    <link type="text/css" rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/alumuko/vanilla-datetimerange-picker@latest/extra/vanilla-datetimerange-picker-dark.css">
+
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js" type="text/javascript"></script>
+    <script
+        src="https://cdn.jsdelivr.net/gh/alumuko/vanilla-datetimerange-picker@latest/dist/vanilla-datetimerange-picker.js"></script>
+
+    <!-- Custom Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -233,7 +246,9 @@
                 input.type = 'search';
                 input.placeholder = `Filtrar ${headerRow.cells[i].textContent.trim()}`;
                 input.dataset.coluna = i;
-                input.className = 'text-xs w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+                classes = 'w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+                input.className = (i == 2 ? 'text-[10px] ' : 'text-xs ') + classes; // smaller font for date column
+                input.id = `filter-input-${i}`;
                 th.appendChild(input);
                 filterRow.appendChild(th);
             }
@@ -266,12 +281,14 @@
         }
 
         function filtrarTabelaFetch() {
-            const filtros = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toUpperCase());
-            searchCode = filtros[0];
-            searchType = filtros[1];
-            searchDate = filtros[2];
-            searchFileName = filtros[3];
-            fetchData();
+            const newFilters = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toUpperCase());
+            const oldFilters = [searchCode, searchType, searchDate, searchFileName];
+
+            if (JSON.stringify(newFilters) !== JSON.stringify(oldFilters)) {
+                currentPage = 1;
+                [searchCode, searchType, searchDate, searchFileName] = newFilters;
+                fetchData();
+            }
         }
 
         // Adiciona o evento de debounce aos inputs
@@ -470,7 +487,6 @@
                 filteredReports = [...allReports];
                 // applySort();
 
-                currentPage = 1;
                 renderTable();
                 renderPaginationControls();
 
@@ -778,12 +794,45 @@
             });
         });
 
+        // Add event listener for date picker input
+        window.addEventListener('apply.daterangepicker', function (ev) {
+            const input = document.getElementById('filter-input-2');
+            if (!ev.detail.endDate.isValid()) {
+                input.value = '';
+            }
+            filtrarTabelaFetch();
+        });
+
+
         // --- Initialize App ---
         document.addEventListener('DOMContentLoaded', () => {
             initTheme(); // Set initial theme
+
             setTimeout(() => {
                 fetchData(); // Fetch initial data
             }, 100);
+
+            new DateRangePicker('filter-input-2', {
+                locale: {
+                    format: "DD/MM/YYYY",
+                    applyLabel: "Aplicar",
+                    cancelLabel: "Cancelar",
+                    daysOfWeek: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
+                    monthNames: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+                },
+                autoApply: true,
+                alwaysShowCalendars: true,
+                ranges: {
+                    'Hoje': [moment().startOf('day'), moment().endOf('day')],
+                    'Ontem': [moment().subtract(1, 'days').startOf('day'), moment().subtract(1, 'days').endOf('day')],
+                    'Últimos 7 Dias': [moment().subtract(6, 'days').startOf('day'), moment().endOf('day')],
+                    'Este Mês': [moment().startOf('month').startOf('day'), moment().endOf('month').endOf('day')],
+                    'Todos': [moment().startOf('day'), moment.invalid()],
+                },
+            });
+
+            const input = document.getElementById('filter-input-2');
+            input.value = '';
         });
     </script>
 </body>

@@ -71,31 +71,20 @@ let filterByCodes codes =
     fun (x: NewsDetail) -> not (String.IsNullOrEmpty x.ticker) && codeSet.Contains x.ticker
 
 let filterByDate (d1: string) (d2: string) =
-    let dateFormats =
-        [| "yyyy-MM-dd"
-           "dd/MM/yyyy"
-           "d/M/yyyy"
-           "dd/MM/yy"
-           "d/M/yy"
-           "dd/MM"
-           "d/M" |]
+    let dateFormats = [| "yyyy-MM-dd"; "dd'/'MM'/'yyyy"; "d'/'M'/'yyyy" |]
 
     let tryParseToIso (s: string) : string option =
         if String.IsNullOrWhiteSpace s then
             None
         else
-            let mutable dt = Unchecked.defaultof<DateTime>
-            let ok =
-                DateTime.TryParseExact(s, dateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, &dt)
-            if ok then
-                // If user typed only dd/MM, fill in current year
-                let year = if s.Length <= 5 then DateTime.Now.Year else dt.Year
-                Some(DateTime(year, dt.Month, dt.Day).ToString("yyyy-MM-dd"))
-            else
-                None
+            match DateTime.TryParseExact(s, dateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None) with
+            | true, dt -> Some(dt.ToString("yyyy-MM-dd"))
+            | false, _ -> None
 
     let d1Opt = tryParseToIso d1
     let d2Opt = tryParseToIso d2
+
+    printfn "******** Parsed dates: %A %A" d1Opt d2Opt
 
     let (startDate, endDate) =
         match d1Opt, d2Opt with
@@ -106,9 +95,12 @@ let filterByDate (d1: string) (d2: string) =
 
     fun (x: NewsDetail) ->
         let date = x.dateTime.Substring(0, 10)
-        not (String.IsNullOrWhiteSpace x.dateTime)
-        && date >= startDate
-        && date <= endDate
+        let result =
+            not (String.IsNullOrWhiteSpace x.dateTime)
+            && date >= startDate
+            && date <= endDate
+        printfn "Filtering by date: %s to %s => %b | [%s] [%s]" startDate endDate result d1 d2
+        result
 
 let filterByFilename (filename: string) =
     let target = filename.ToLowerInvariant()
