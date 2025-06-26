@@ -6,11 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório de Empresas e FIIs</title>
 
-    <!-- Favicon -->
     <link rel="icon"
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%F0%9F%A6%85%3C/text%3E%3C/svg%3E">
 
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -18,15 +16,12 @@
         };
     </script>
 
-    <!-- Date Range Picker - github.com/alumuko/vanilla-datetimerange-picker -->
     <link type="text/css" rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/alumuko/vanilla-datetimerange-picker@latest/extra/vanilla-datetimerange-picker-dark.css">
-
     <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js" type="text/javascript"></script>
     <script
         src="https://cdn.jsdelivr.net/gh/alumuko/vanilla-datetimerange-picker@latest/dist/vanilla-datetimerange-picker.js"></script>
 
-    <!-- Custom Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -37,26 +32,17 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        table td:first-child,
-        table th:first-child {
-            width: 70px;
-            max-width: 70px;
-            white-space: nowrap;
-        }
-
         /* Custom scrollbar for dark mode */
         .dark ::-webkit-scrollbar-thumb {
             background-color: #4a5568;
-            /* darker grey */
             border-radius: 8px;
         }
 
         .dark ::-webkit-scrollbar-track {
             background-color: #2d3748;
-            /* even darker grey */
         }
 
-        /* Styling for the modal background and content */
+        /* Styling for the modal */
         .modal-overlay {
             background-color: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(5px);
@@ -78,18 +64,15 @@
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col items-center p-4">
 
     <div id="app"
-        class="w-full max-w-[calc(90%)] bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
-        <!-- Header -->
+        class="w-full lg:max-w-[calc(90%)] bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
         <header class="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
             <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-200">Relatórios de Empresas e FIIs</h1>
             <div class="flex items-center space-x-4">
-                <!-- Config Icon -->
-                <button id="configBtn"
+                <button id="configBtn" aria-label="Open settings"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors duration-200">
                     ⚙️
                 </button>
-                <!-- Dark/Light Mode Toggle -->
-                <button id="themeToggle"
+                <button id="themeToggle" aria-label="Toggle dark/light theme"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors duration-200">
                     <span id="moonIcon">🌙</span>
                     <span id="sunIcon" class="hidden">☀️</span>
@@ -97,19 +80,17 @@
             </div>
         </header>
 
-        <!-- Loading Indicator -->
         <div id="loadingIndicator" class="hidden flex items-center justify-center p-4 text-blue-600 dark:text-blue-400">
-            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600 dark:text-blue-400"
-                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                 </path>
             </svg>
-            Fetching data...
+            Buscando dados...
         </div>
 
-        <!-- Table Container -->
         <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead id="reportTableHeader" class="bg-gray-50 dark:bg-gray-700">
@@ -133,16 +114,14 @@
                 </thead>
                 <tbody id="reportTableBody"
                     class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    <!-- Data will be inserted here by JavaScript -->
                 </tbody>
             </table>
         </div>
 
-        <!-- Pagination Controls -->
         <div
             class="flex flex-col sm:flex-row justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4 sm:space-y-0">
             <div class="flex items-center space-x-2">
-                <span class="text-sm text-gray-700 dark:text-gray-300">Items per page:</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">Itens por página:</span>
                 <select id="itemsPerPageSelect"
                     class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
                     <option value="20">20</option>
@@ -151,680 +130,477 @@
                 </select>
             </div>
             <div id="paginationControls" class="flex flex-wrap justify-center items-center gap-2">
-                <!-- Pagination buttons will be inserted here by JavaScript -->
             </div>
         </div>
     </div>
 
-    <!-- Config Modal -->
     <div id="configModal" class="fixed inset-0 hidden flex items-center justify-center p-4 z-50 modal-overlay">
         <div
             class="modal-content bg-white dark:bg-gray-800 rounded-xl p-8 space-y-6 w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-xl transition-all duration-300 transform scale-95 opacity-0">
-            <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-200 text-center">Configuration</h2>
+            <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-200 text-center">Configuração</h2>
             <div class="space-y-4">
                 <div>
                     <label for="tickerFilter"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ticker Code(s)
-                        (comma-separated):</label>
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Códigos de Ticker
+                        (separados por vírgula):</label>
                     <input type="text" id="tickerFilter"
                         class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
                 </div>
-                <!--
-                <div>
-                    <label for="startDateFilter"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date:</label>
-                    <input type="date" id="startDateFilter"
-                        class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="endDateFilter"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date:</label>
-                    <input type="date" id="endDateFilter"
-                        class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                -->
             </div>
             <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
                 <button id="cancelCloseConfigBtn"
-                    class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors duration-200">Close</button>
+                    class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors duration-200">Fechar</button>
                 <button id="saveConfigBtn"
-                    class="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200">Save
-                    Config</button>
+                    class="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200">Salvar</button>
                 <button id="saveReloadConfigBtn"
-                    class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200">Save
-                    & Reload Data</button>
+                    class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200">Salvar
+                    e Recarregar</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Global variables for data and state
-        let allReports = []; // Stores the 'news' array from the current fetched page
-        let filteredReports = []; // Stores the data after applying client-side sorting
-        let searchCode = '';
-        let searchType = '';
-        let searchDate = '';
-        let searchFileName = '';
-        let currentPage = 1;
-        let totalPagesFromServer = 0; // New variable to store total pages from server
-        let sortColumn = null;
-        let sortDirection = 'asc'; // 'asc' or 'desc'
-        let currentConfig = {
-            ticker: '',
-            startDate: '',
-            endDate: ''
-        };
-        let configChanged = false; // To track changes in config modal
+        // =================================================================================
+        // SCRIPT START
+        // =================================================================================
+        document.addEventListener('DOMContentLoaded', () => {
 
-        // DOM Elements
-        const appDiv = document.getElementById('app');
-        const reportTableHeader = document.getElementById('reportTableHeader');
-        const reportTableBody = document.getElementById('reportTableBody');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        const itemsPerPageSelect = document.getElementById('itemsPerPageSelect');
-        const paginationControls = document.getElementById('paginationControls');
-        const themeToggle = document.getElementById('themeToggle');
-        const moonIcon = document.getElementById('moonIcon');
-        const sunIcon = document.getElementById('sunIcon');
-        const configBtn = document.getElementById('configBtn');
-        const configModal = document.getElementById('configModal');
-        const tickerFilterInput = document.getElementById('tickerFilter');
-        // const startDateFilterInput = document.getElementById('startDateFilter');
-        // const endDateFilterInput = document.getElementById('endDateFilter');
-        const cancelCloseConfigBtn = document.getElementById('cancelCloseConfigBtn');
-        const saveConfigBtn = document.getElementById('saveConfigBtn');
-        const saveReloadConfigBtn = document.getElementById('saveReloadConfigBtn');
-        const tableHeaders = document.querySelectorAll('th[data-sort-by]');
-
-        // --- Filter ---
-
-        // Cria uma nova linha para os inputs
-        const filterRow = document.createElement('tr');
-        const headerRow = reportTableHeader.rows[0];
-        const colunas = headerRow.cells.length;
-
-        (function createFilterInput() {
-            for (let i = 0; i < colunas; i++) {
-                const th = document.createElement('th');
-                const input = document.createElement('input');
-                input.type = 'search';
-                input.placeholder = `Filtrar ${headerRow.cells[i].textContent.trim()}`;
-                input.dataset.coluna = i;
-                classes = 'w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
-                input.className = (i == 2 ? 'text-[10px] ' : 'text-xs ') + classes; // smaller font for date column
-                input.id = `filter-input-${i}`;
-                th.appendChild(input);
-                filterRow.appendChild(th);
-            }
-            reportTableHeader.appendChild(filterRow);
-        })();
-
-        function debounce(fn, delay) {
-            let timeout;
-            return function (...args) {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => fn.apply(this, args), delay);
+            // --- STATE MANAGEMENT & CONFIGURATION ---
+            // Holds the application's current state and configuration.
+            // -----------------------------------------------------------------------------
+            let reports = []; // Stores the 'news' array from the current fetched page
+            let currentPage = 1;
+            let totalPagesFromServer = 0;
+            let sortState = {
+                column: 'dateTime', // Default sort column
+                direction: 'desc'  // Default sort direction
             };
-        }
+            let filterState = {
+                code: '',
+                type: '',
+                date: '',
+                fileName: ''
+            };
+            let globalConfig = {
+                ticker: ''
+            };
+            let hasConfigChanged = false;
 
-        // Função de filtragem
-        function filtrarTabela() {
-            const filtros = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toLowerCase());
-            const linhas = reportTableBody.rows;
-            for (let linha of linhas) {
-                let mostrar = true;
-                for (let i = 0; i < colunas; i++) {
-                    const filtro = filtros[i];
-                    if (filtro && !linha.cells[i].textContent.toLowerCase().includes(filtro)) {
-                        mostrar = false;
-                        break;
+
+            // --- DOM ELEMENT REFERENCES ---
+            // Centralized access to all necessary DOM elements.
+            // -----------------------------------------------------------------------------
+            const elements = {
+                app: document.getElementById('app'),
+                tableHeader: document.getElementById('reportTableHeader'),
+                tableBody: document.getElementById('reportTableBody'),
+                loadingIndicator: document.getElementById('loadingIndicator'),
+                itemsPerPageSelect: document.getElementById('itemsPerPageSelect'),
+                paginationControls: document.getElementById('paginationControls'),
+                theme: {
+                    toggleBtn: document.getElementById('themeToggle'),
+                    moonIcon: document.getElementById('moonIcon'),
+                    sunIcon: document.getElementById('sunIcon'),
+                },
+                modal: {
+                    configBtn: document.getElementById('configBtn'),
+                    modal: document.getElementById('configModal'),
+                    content: document.querySelector('.modal-content'),
+                    tickerInput: document.getElementById('tickerFilter'),
+                    cancelBtn: document.getElementById('cancelCloseConfigBtn'),
+                    saveBtn: document.getElementById('saveConfigBtn'),
+                    saveReloadBtn: document.getElementById('saveReloadConfigBtn'),
+                },
+                tableHeaders: document.querySelectorAll('th[data-sort-by]')
+            };
+
+
+            // --- UTILITY FUNCTIONS ---
+            // General-purpose helper functions.
+            // -----------------------------------------------------------------------------
+
+            /**
+             * Delays the execution of a function until after a specified wait time.
+             * @param {Function} fn The function to debounce.
+             * @param {number} delay The delay in milliseconds.
+             * @returns {Function} The debounced function.
+             */
+            function debounce(fn, delay) {
+                let timeout;
+                return function (...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => fn.apply(this, args), delay);
+                };
+            }
+
+            /**
+             * Formats a date string to a consistent "dd/mm/yyyy HH:MM" format.
+             * @param {string} dateString The ISO date string from the API.
+             * @returns {string} The formatted date string.
+             */
+            function formatDate(dateString) {
+                const date = new Date(dateString);
+                if (isNaN(date)) return dateString; // Return original if invalid
+                const options = {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                    timeZone: 'America/Sao_Paulo',
+                    hour12: false
+                };
+                return date.toLocaleString('pt-BR', options).replace(',', '');
+            }
+
+
+            // --- API & DATA HANDLING ---
+            // Functions responsible for fetching and managing data from the server.
+            // -----------------------------------------------------------------------------
+
+            /**
+             * Fetches report data from the API based on the current state.
+             */
+            async function fetchData() {
+                showLoading();
+                try {
+                    const params = new URLSearchParams({
+                        pageSize: elements.itemsPerPageSelect.value || 20,
+                        page: currentPage,
+                        sortBy: sortState.column,
+                        sortDirection: sortState.direction,
+                    });
+
+                    // Add filters to query parameters if they exist
+                    const codes = filterState.code
+                        ? filterState.code.trim().toUpperCase()
+                        : globalConfig.ticker.split(',').map(t => t.trim()).filter(Boolean).join(',');
+
+                    if (codes) params.append('codes', codes);
+                    if (filterState.type) params.append('reportType', filterState.type);
+                    if (filterState.date) params.append('date', filterState.date);
+                    if (filterState.fileName) params.append('fileName', filterState.fileName);
+
+                    const apiUrl = `/api/news?${params.toString()}`;
+                    console.log("Fetching from:", apiUrl); // For debugging
+
+                    const response = await fetch(apiUrl);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const data = await response.json();
+                    reports = data.news || [];
+                    totalPagesFromServer = data.totalPages || 0;
+
+                    renderTable();
+                    renderPaginationControls();
+
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    elements.tableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-500">Falha ao carregar dados. Por favor, tente novamente.</td></tr>`;
+                    reports = [];
+                    totalPagesFromServer = 0;
+                    renderTable();
+                    renderPaginationControls();
+                } finally {
+                    hideLoading();
+                    elements.app.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+
+
+            // --- UI RENDERING & MANIPULATION ---
+            // Functions that update the DOM to reflect the application state.
+            // -----------------------------------------------------------------------------
+
+            /** Shows the main loading indicator. */
+            function showLoading() {
+                elements.loadingIndicator.classList.remove('hidden');
+            }
+
+            /** Hides the main loading indicator. */
+            function hideLoading() {
+                elements.loadingIndicator.classList.add('hidden');
+            }
+
+            /**
+             * Renders the fetched reports into the table body.
+             */
+            function renderTable() {
+                elements.tableBody.innerHTML = '';
+                if (reports.length === 0) {
+                    const message = totalPagesFromServer > 0 ? "Nenhum relatório para esta página." : "Nenhum relatório encontrado com seus critérios.";
+                    elements.tableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500 dark:text-gray-400">${message}</td></tr>`;
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                reports.forEach(report => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150';
+                    row.innerHTML = `
+                        <td class="px-4 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
+                        <td class="px-4 py-2 md:whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                            <a href="${report.url}" target="_blank" rel="noopener noreferrer" class="visited:text-purple-600">${report.reportType || 'N/A'}</a>
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
+                            <a href="${report.url}" target="_blank" rel="noopener noreferrer" class="visited:text-purple-600">${report.filename || 'N/A'}</a>
+                        </td>
+                    `;
+                    fragment.appendChild(row);
+                });
+                elements.tableBody.appendChild(fragment);
+            }
+
+            /**
+             * Renders the pagination controls based on total pages and current page.
+             */
+            function renderPaginationControls() {
+                elements.paginationControls.innerHTML = '';
+                const totalPages = totalPagesFromServer;
+                if (totalPages <= 1) return;
+
+                const createButton = (text, pageNum, isDisabled = false, isActive = false) => {
+                    const button = document.createElement('button');
+                    button.textContent = text;
+                    let baseClasses = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
+                    if (isActive) button.className = `${baseClasses} bg-blue-500 text-white`;
+                    else if (isDisabled) button.className = `${baseClasses} bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed`;
+                    else button.className = `${baseClasses} bg-gray-50 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300`;
+
+                    if (!isDisabled) button.addEventListener('click', () => goToPage(pageNum));
+                    button.disabled = isDisabled;
+                    return button;
+                };
+
+                const createEllipsis = () => {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.textContent = '...';
+                    ellipsis.className = 'px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300';
+                    return ellipsis;
+                };
+
+                elements.paginationControls.appendChild(createButton('Anterior', currentPage - 1, currentPage === 1));
+
+                // Pagination logic with ellipses
+                const maxPagesToShow = 5;
+                if (totalPages > maxPagesToShow) {
+                    let startPage = Math.max(1, currentPage - 2);
+                    let endPage = Math.min(totalPages, currentPage + 2);
+
+                    if (currentPage < 4) {
+                        startPage = 1;
+                        endPage = maxPagesToShow;
+                    } else if (currentPage > totalPages - 3) {
+                        startPage = totalPages - maxPagesToShow + 1;
+                        endPage = totalPages;
+                    }
+
+                    if (startPage > 1) {
+                        elements.paginationControls.appendChild(createButton('1', 1));
+                        if (startPage > 2) elements.paginationControls.appendChild(createEllipsis());
+                    }
+
+                    for (let i = startPage; i <= endPage; i++) {
+                        elements.paginationControls.appendChild(createButton(String(i), i, false, i === currentPage));
+                    }
+
+                    if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) elements.paginationControls.appendChild(createEllipsis());
+                        elements.paginationControls.appendChild(createButton(String(totalPages), totalPages));
+                    }
+                } else {
+                    for (let i = 1; i <= totalPages; i++) {
+                        elements.paginationControls.appendChild(createButton(String(i), i, false, i === currentPage));
                     }
                 }
-                linha.style.display = mostrar ? '' : 'none';
+
+                elements.paginationControls.appendChild(createButton('Próxima', currentPage + 1, currentPage === totalPages));
             }
-        }
 
-        function filtrarTabelaFetch() {
-            const newFilters = Array.from(filterRow.querySelectorAll('input')).map(input => input.value.toUpperCase());
-            const oldFilters = [searchCode, searchType, searchDate, searchFileName];
+            /**
+             * Updates the sort indicator icons (▲/▼) in the table headers.
+             */
+            function updateSortIcons() {
+                document.querySelectorAll('th[data-sort-by] span').forEach(span => span.textContent = '');
+                const iconSpan = document.getElementById(`${sortState.column}SortIcon`);
+                if (iconSpan) {
+                    iconSpan.textContent = sortState.direction === 'asc' ? ' ▲' : ' ▼';
+                }
+            }
 
-            if (JSON.stringify(newFilters) !== JSON.stringify(oldFilters)) {
+
+            // --- THEME & MODAL MANAGEMENT ---
+            // Functions for UI controls like theme toggling and modal interactions.
+            // -----------------------------------------------------------------------------
+
+            /** Initializes the color theme from localStorage or system preference. */
+            function initializeTheme() {
+                const savedTheme = localStorage.getItem('theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                    document.documentElement.classList.add('dark');
+                    elements.theme.moonIcon.classList.add('hidden');
+                    elements.theme.sunIcon.classList.remove('hidden');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+
+            /** Toggles between light and dark mode. */
+            function toggleDarkMode() {
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                elements.theme.moonIcon.classList.toggle('hidden', isDark);
+                elements.theme.sunIcon.classList.toggle('hidden', !isDark);
+            }
+
+            /** Opens the configuration modal with an animation. */
+            function openConfigModal() {
+                elements.modal.tickerInput.value = globalConfig.ticker;
+                hasConfigChanged = false;
+                updateConfigButtons();
+                elements.modal.modal.classList.remove('hidden');
+                setTimeout(() => elements.modal.content.classList.remove('scale-95', 'opacity-0'), 10);
+            }
+
+            /** Closes the configuration modal with an animation. */
+            function closeConfigModal() {
+                elements.modal.content.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => elements.modal.modal.classList.add('hidden'), 300);
+            }
+
+            /** Updates the text and color of the modal's 'Close' button based on changes. */
+            function updateConfigButtons() {
+                const btn = elements.modal.cancelBtn;
+                if (hasConfigChanged) {
+                    btn.textContent = 'Cancelar';
+                    btn.className = btn.className.replace(/bg-gray-200|hover:bg-gray-300|dark:bg-gray-700|dark:hover:bg-gray-600|text-gray-800|dark:text-gray-200/g, '');
+                    btn.classList.add('bg-red-500', 'hover:bg-red-600', 'text-white');
+                } else {
+                    btn.textContent = 'Fechar';
+                    btn.className = btn.className.replace(/bg-red-500|hover:bg-red-600|text-white/g, '');
+                    btn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'dark:bg-gray-700', 'dark:hover:bg-gray-600', 'text-gray-800', 'dark:text-gray-200');
+                }
+            }
+
+            /** Saves the configuration from the modal to state and localStorage. */
+            function saveConfig() {
+                globalConfig.ticker = elements.modal.tickerInput.value.trim();
+                localStorage.setItem('reportViewerConfig', JSON.stringify(globalConfig));
+                hasConfigChanged = false;
+                updateConfigButtons();
+            }
+
+            /** Loads configuration from localStorage on startup. */
+            function loadConfigFromLocalStorage() {
+                const saved = localStorage.getItem('reportViewerConfig');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && typeof parsed === 'object') {
+                            globalConfig.ticker = parsed.ticker || '';
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse config from localStorage", e);
+                    }
+                }
+            }
+
+
+            // --- EVENT HANDLERS ---
+            // Functions that respond to user interactions.
+            // -----------------------------------------------------------------------------
+
+            /**
+             * Handles changes in the filter inputs, triggering a debounced data fetch.
+             */
+            const handleFilterChange = debounce(() => {
+                const code = document.getElementById('filter-input-0').value.toUpperCase();
+                const newFilters = {
+                    code: code.length == 0 || code.length == 4 ? code : filterState.code,
+                    type: document.getElementById('filter-input-1').value.toUpperCase(),
+                    date: document.getElementById('filter-input-2').value,
+                    fileName: document.getElementById('filter-input-3').value.toUpperCase()
+                };
+
+                if (JSON.stringify(newFilters) !== JSON.stringify(filterState)) {
+                    currentPage = 1;
+                    filterState = newFilters;
+                    fetchData();
+                }
+            }, 600);
+
+            /**
+             * Navigates to a specific page and re-fetches data.
+             * @param {number} pageNum The page number to go to.
+             */
+            function goToPage(pageNum) {
+                if (pageNum >= 1 && pageNum <= totalPagesFromServer) {
+                    currentPage = pageNum;
+                    fetchData();
+                }
+            }
+
+            /**
+             * Handles sorting when a table header is clicked.
+             * @param {string} column The column key to sort by.
+             */
+            function handleSort(column) {
+                if (sortState.column === column) {
+                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortState.column = column;
+                    sortState.direction = 'asc';
+                }
                 currentPage = 1;
-                [searchCode, searchType, searchDate, searchFileName] = newFilters;
+                updateSortIcons();
                 fetchData();
             }
-        }
 
-        // Adiciona o evento de debounce aos inputs
-        filterRow.querySelectorAll('input').forEach(input => {
-            input.addEventListener('input', debounce(filtrarTabelaFetch, 600));
-        });
+            /** Creates and initializes the filter row inputs in the table header. */
+            function initializeFilterRow() {
+                const filterRow = document.createElement('tr');
+                const headerRow = elements.tableHeader.rows[0];
+                const columnCount = headerRow.cells.length;
 
+                for (let i = 0; i < columnCount; i++) {
+                    const th = document.createElement('th');
+                    const input = document.createElement('input');
+                    input.type = 'search';
+                    input.placeholder = `Filtrar ${headerRow.cells[i].textContent.trim()}`;
+                    input.id = `filter-input-${i}`;
 
-        // --- Utility Functions ---
+                    const baseClasses = 'w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+                    input.className = (i == 2 ? 'text-[10px] ' : 'text-xs ') + baseClasses;
+                    if (i == 3) input.classList.add('hide-on-mobile');
 
-        /**
-         * Shows the loading indicator.
-         */
-        function showLoading() {
-            loadingIndicator.classList.remove('hidden');
-        }
-
-        /**
-         * Hides the loading indicator.
-         */
-        function hideLoading() {
-            loadingIndicator.classList.add('hidden');
-        }
-
-        /**
-         * Formats a date string to a more readable format.
-         * @param {string} dateString - The date string from the JSON.
-         * @returns {string} Formatted date string.
-         */
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            if (isNaN(date)) {
-                return dateString; // Return original if invalid date
-            }
-            const options = {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'America/Sao_Paulo', // Adjust to your timezone
-                hour12: false // Use 24-hour format
-            };
-            return date.toLocaleString('pt-BR', options).replace(',', ''); // Remove comma for consistency
-        }
-
-        /**
-         * Toggles dark mode on/off and saves preference to localStorage.
-         */
-        function toggleDarkMode() {
-            const htmlElement = document.documentElement;
-            if (htmlElement.classList.contains('dark')) {
-                htmlElement.classList.remove('dark');
-                htmlElement.classList.add('light');
-                localStorage.setItem('theme', 'light');
-                moonIcon.classList.remove('hidden');
-                sunIcon.classList.add('hidden');
-            } else {
-                htmlElement.classList.remove('light');
-                htmlElement.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
-                moonIcon.classList.add('hidden');
-                sunIcon.classList.remove('hidden');
-            }
-        }
-
-        /**
-         * Initializes the theme based on localStorage.
-         */
-        function initTheme() {
-            const savedTheme = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-                document.documentElement.classList.add('dark');
-                moonIcon.classList.add('hidden');
-                sunIcon.classList.remove('hidden');
-            } else {
-                document.documentElement.classList.add('light');
-                moonIcon.classList.remove('hidden');
-                sunIcon.classList.add('hidden');
-            }
-        }
-
-        /**
-         * Displays the configuration modal.
-         */
-        function openConfigModal() {
-            // Populate modal inputs with current config
-            tickerFilterInput.value = currentConfig.ticker;
-            // startDateFilterInput.value = currentConfig.startDate;
-            // endDateFilterInput.value = currentConfig.endDate;
-
-            configChanged = false; // Reset changed state
-            updateConfigButtons(); // Update button text
-
-            configModal.classList.remove('hidden');
-            // Animate modal entry
-            setTimeout(() => {
-                configModal.querySelector('.modal-content').classList.remove('scale-95', 'opacity-0');
-                configModal.querySelector('.modal-content').classList.add('scale-100', 'opacity-100');
-            }, 10);
-        }
-
-        /**
-         * Hides the configuration modal.
-         */
-        function closeConfigModal() {
-            // Animate modal exit
-            configModal.querySelector('.modal-content').classList.remove('scale-100', 'opacity-100');
-            configModal.querySelector('.modal-content').classList.add('scale-95', 'opacity-0');
-            setTimeout(() => {
-                configModal.classList.add('hidden');
-            }, 300); // Wait for animation to complete
-        }
-
-        /**
-         * Updates the text of the "Close/Cancel" button based on configChanged state.
-         */
-        function updateConfigButtons() {
-            if (configChanged) {
-                cancelCloseConfigBtn.textContent = 'Cancel';
-                cancelCloseConfigBtn.classList.remove('bg-gray-200', 'hover:bg-gray-300');
-                cancelCloseConfigBtn.classList.add('bg-red-500', 'hover:bg-red-600', 'text-white');
-            } else {
-                cancelCloseConfigBtn.textContent = 'Close';
-                cancelCloseConfigBtn.classList.add('bg-gray-200', 'hover:bg-gray-300');
-                cancelCloseConfigBtn.classList.remove('bg-red-500', 'hover:bg-red-600', 'text-white');
-            }
-        }
-
-        /**
-         * Sets configChanged to true and updates the button text.
-         */
-        function markConfigChanged() {
-            configChanged = true;
-            updateConfigButtons();
-        }
-
-        // --- Data Handling ---
-
-        /**
-         * Fetches data from the API based on current pagination and filter settings.
-         */
-        async function fetchData() {
-            showLoading();
-            try {
-                // Construct query parameters
-                const params = new URLSearchParams();
-                params.append('pageSize', itemsPerPageSelect.value || '20'); // Default to 20 if not set
-                params.append('page', currentPage);
-
-                if (currentConfig.ticker || searchCode.length == 4) {
-                    // Split by comma and trim each ticker, then join back for the API
-                    const tickers = searchCode.length > 0 ? [searchCode] : currentConfig.ticker.split(',').map(t => t.trim()).filter(t => t);
-                    if (tickers.length > 0) {
-                        params.append('codes', tickers.join(','));
-                    }
+                    input.addEventListener('input', handleFilterChange);
+                    th.appendChild(input);
+                    filterRow.appendChild(th);
                 }
-                if (searchType.length > 0) {
-                    params.append('reportType', searchType);
-                }
-                if (searchDate.length > 0) {
-                    params.append('date', searchDate);
-                }
-                if (searchFileName.length > 0) {
-                    params.append('fileName', searchFileName);
-                }
-                // Assuming the API also supports StartDate and EndDate parameters
-                // if (currentConfig.startDate) {
-                //     params.append('StartDate', currentConfig.startDate);
-                // }
-                // if (currentConfig.endDate) {
-                //     params.append('EndDate', currentConfig.endDate);
-                // }
-
-                if (sortColumn) {
-                    params.append('sortBy', sortColumn);
-                    params.append('sortDirection', sortDirection);
-                }
-
-                const apiUrl = `/api/news?${params.toString()}`;
-                console.log("Fetching from:", apiUrl); // For debugging purposes
-
-                const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-
-                // Update allReports with the 'news' array from the fetched page
-                allReports = data.news || [];
-                totalPagesFromServer = data.totalPages || 0; // Get total pages from server response
-
-                // Apply client-side sorting to the current page's data
-                filteredReports = [...allReports];
-                // applySort();
-
-                renderTable();
-                renderPaginationControls();
-
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-500">Failed to load data. Please try again. (Ensure the backend server is running on localhost:8082)</td></tr>`;
-                // Clear existing data and pagination on error
-                allReports = [];
-                filteredReports = [];
-                totalPagesFromServer = 0;
-                renderTable();
-                renderPaginationControls();
-            } finally {
-                hideLoading();
-                // jump to the top of the table after fetching data
-                appDiv.scrollIntoView({ behavior: 'smooth' });
-            }
-        }
-
-        /**
-         * Applies client-side sorting to the current page's data.
-         */
-        function applySort() {
-            if (sortColumn) {
-                filteredReports.sort((a, b) => {
-                    let valA = a[sortColumn];
-                    let valB = b[sortColumn];
-
-                    // Special handling for date/dateTime sorting
-                    if (sortColumn === 'dateTime') { // Changed to 'dateTime'
-                        valA = new Date(valA);
-                        valB = new Date(valB);
-                    }
-
-                    if (valA < valB) {
-                        return sortDirection === 'asc' ? -1 : 1;
-                    }
-                    if (valA > valB) {
-                        return sortDirection === 'asc' ? 1 : -1;
-                    }
-                    return 0;
-                });
-            }
-        }
-
-        /**
-         * Renders the current page's data to the table.
-         */
-        function renderTable() {
-            reportTableBody.innerHTML = ''; // Clear existing rows
-
-            if (filteredReports.length === 0 && totalPagesFromServer === 0) {
-                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500 dark:text-gray-400">No reports found matching your criteria.</td></tr>`;
-            } else if (filteredReports.length === 0 && totalPagesFromServer > 0) {
-                reportTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500 dark:text-gray-400">No reports for this page. Please navigate to another page.</td></tr>`;
+                elements.tableHeader.appendChild(filterRow);
             }
 
-            filteredReports.forEach(report => {
-                const row = document.createElement('tr');
-                row.classList.add('hover:bg-gray-50', 'dark:hover:bg-gray-700', 'transition-colors', 'duration-150');
-                row.innerHTML = `
-                    <td class="px-4 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-100">${report.ticker || 'N/A'}</td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                        <a href="${report.url}" rel="noopener noreferrer" class="visited:text-purple-600">${report.reportType || 'N/A'}</a>
-                    </td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${formatDate(report.dateTime)}</td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 hide-on-mobile">
-                        <a href="${report.url}" rel="noopener noreferrer" class="visited:text-purple-600">${report.filename || 'N/A'}</a>
-                    </td>
-                `;
-                reportTableBody.appendChild(row);
-            });
-        }
 
-        /**
-         * Renders the pagination controls (page numbers, prev/next, etc.).
-         */
-        function renderPaginationControls() {
-            paginationControls.innerHTML = ''; // Clear existing controls
+            // --- INITIALIZATION & EVENT LISTENERS ---
+            // Sets up the application, attaches event listeners, and makes the initial data call.
+            // -----------------------------------------------------------------------------
 
-            const totalPages = totalPagesFromServer; // Use total pages from server
-
-            if (totalPages <= 1) {
-                paginationControls.innerHTML = `<span class="text-sm text-gray-700 dark:text-gray-300">Page 1 of 1</span>`;
-                return;
-            }
-
-            const maxPagesToShow = 5; // Number of page numbers to show directly
-            let startPage, endPage;
-
-            if (totalPages <= maxPagesToShow) {
-                startPage = 1;
-                endPage = totalPages;
-            } else {
-                const half = Math.floor(maxPagesToShow / 2);
-                if (currentPage <= half) {
-                    startPage = 1;
-                    endPage = maxPagesToShow;
-                } else if (currentPage + half >= totalPages) {
-                    startPage = totalPages - maxPagesToShow + 1;
-                    endPage = totalPages;
-                } else {
-                    startPage = currentPage - half;
-                    endPage = currentPage + half;
-                }
-            }
-
-            // Helper function to create a button
-            const createPageButton = (text, pageNum, isDisabled = false, isActive = false) => {
-                const button = document.createElement('button');
-                button.textContent = text;
-                button.classList.add(
-                    'px-3', 'py-1.5', 'rounded-lg', 'text-sm', 'font-medium', 'transition-colors', 'duration-200',
-                    'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500'
-                );
-                if (isActive) {
-                    button.classList.add('bg-blue-500', 'text-white');
-                } else if (isDisabled) {
-                    button.classList.add('bg-gray-200', 'text-gray-400', 'dark:bg-gray-700', 'dark:text-gray-500', 'cursor-not-allowed');
-                    button.disabled = true;
-                } else {
-                    button.classList.add('bg-gray-50', 'hover:bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:hover:bg-gray-600', 'dark:text-gray-300');
-                    button.addEventListener('click', () => goToPage(pageNum));
-                }
-                return button;
-            };
-
-            // "Previous" button
-            paginationControls.appendChild(createPageButton('Previous', currentPage - 1, currentPage === 1));
-
-            // "First" page button and ellipsis
-            if (startPage > 1) {
-                paginationControls.appendChild(createPageButton('1', 1));
-                if (startPage > 2) {
-                    const ellipsis = document.createElement('span');
-                    ellipsis.textContent = '...';
-                    ellipsis.classList.add('px-3', 'py-1.5', 'text-sm', 'text-gray-700', 'dark:text-gray-300');
-                    paginationControls.appendChild(ellipsis);
-                }
-            }
-
-            // Page numbers
-            for (let i = startPage; i <= endPage; i++) {
-                paginationControls.appendChild(createPageButton(String(i), i, false, i === currentPage));
-            }
-
-            // "Last" page button and ellipsis
-            if (endPage < totalPages) {
-                if (endPage < totalPages - 1) {
-                    const ellipsis = document.createElement('span');
-                    ellipsis.textContent = '...';
-                    ellipsis.classList.add('px-3', 'py-1.5', 'text-sm', 'text-gray-700', 'dark:text-gray-300');
-                    paginationControls.appendChild(ellipsis);
-                }
-                paginationControls.appendChild(createPageButton(String(totalPages), totalPages));
-            }
-
-            // "Next" button
-            paginationControls.appendChild(createPageButton('Next', currentPage + 1, currentPage === totalPages));
-        }
-
-        /**
-         * Navigates to a specific page and re-fetches data.
-         * @param {number} pageNum - The page number to navigate to.
-         */
-        function goToPage(pageNum) {
-            if (pageNum >= 1 && pageNum <= totalPagesFromServer) {
-                currentPage = pageNum;
-                fetchData(); // Re-fetch data for the new page
-            }
-        }
-
-        /**
-         * Handles changing the number of items displayed per page.
-         * @param {Event} event - The change event from the select element.
-         */
-        function changeItemsPerPage(event) {
-            currentPage = 1; // Reset to first page
-            fetchData(); // Re-fetch data with new items per page
-        }
-
-        /**
-         * Sorts the table by the given column.
-         * Note: This currently sorts only the data on the current page.
-         * For full sorting across all data, server-side sorting would be needed.
-         * @param {string} column - The column to sort by.
-         */
-        function sortTable(column) {
-            if (sortColumn === column) {
-                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-            } else {
-                sortColumn = column;
-                sortDirection = 'asc';
-            }
-            updateSortIcons();
-            // applySort(); // Re-apply sort to the current page's data
-            fetchData(); // Re-fetch data to apply sorting
-            renderTable(); // Re-render table with sorted data
-        }
-
-        /**
-         * Updates the sort icons in the table headers.
-         */
-        function updateSortIcons() {
-            document.querySelectorAll('th[data-sort-by] span').forEach(span => {
-                // Clear all previous sort icons, except for the one being sorted
-                const sortBy = span.parentNode.getAttribute('data-sort-by');
-                if (sortBy !== sortColumn) {
-                    span.textContent = '';
-                }
-            });
-
-            if (sortColumn) {
-                const sortIconSpan = document.getElementById(`${sortColumn}SortIcon`);
-                if (sortIconSpan) {
-                    sortIconSpan.textContent = sortDirection === 'asc' ? ' ▲' : ' ▼';
-                }
-            }
-        }
-
-        /**
-         * Saves the current config from the modal inputs to currentConfig.
-         */
-        function saveConfig() {
-            currentConfig.ticker = tickerFilterInput.value.trim();
-            // currentConfig.startDate = startDateFilterInput.value;
-            // currentConfig.endDate = endDateFilterInput.value;
-            // Save config to localStorage
-            localStorage.setItem('reportViewerConfig', JSON.stringify(currentConfig));
-            configChanged = false; // Reset changed state after saving
-            updateConfigButtons();
-            closeConfigModal();
-        }
-
-        // Load config from localStorage on page load
-        function loadConfigFromLocalStorage() {
-            const saved = localStorage.getItem('reportViewerConfig');
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    if (parsed && typeof parsed === 'object') {
-                        currentConfig.ticker = parsed.ticker || '';
-                        // currentConfig.startDate = parsed.startDate || '';
-                        // currentConfig.endDate = parsed.endDate || '';
-                    }
-                    fetchData();
-                } catch { }
-            }
-        }
-
-        // Call loadConfigFromLocalStorage when the page loads
-        window.addEventListener('DOMContentLoaded', () => {
+            // Setup
+            initializeTheme();
+            initializeFilterRow();
             loadConfigFromLocalStorage();
-            // If you want to update the UI with loaded config:
-            tickerFilterInput.value = currentConfig.ticker;
-            // startDateFilterInput.value = currentConfig.startDate;
-            // endDateFilterInput.value = currentConfig.endDate;
-        });
+            updateSortIcons();
 
-        // --- Event Listeners ---
+            // Initial data fetch
+            fetchData();
 
-        itemsPerPageSelect.addEventListener('change', changeItemsPerPage);
-
-        // Theme toggle
-        themeToggle.addEventListener('click', toggleDarkMode);
-
-        // Config button
-        configBtn.addEventListener('click', openConfigModal);
-
-        // Config modal buttons
-        cancelCloseConfigBtn.addEventListener('click', () => {
-            closeConfigModal();
-        });
-        saveConfigBtn.addEventListener('click', () => {
-            saveConfig();
-            // No need to call applySort or renderTable here directly, as fetchData will do it.
-            // fetchData() will be called by saveReloadConfigBtn if that's pressed, or manually refresh.
-        });
-        saveReloadConfigBtn.addEventListener('click', () => {
-            saveConfig();
-            currentPage = 1; // Reset to first page on reload
-            fetchData(); // Re-fetch data with new config
-        });
-
-        // Event listeners for config input changes to mark as changed
-        tickerFilterInput.addEventListener('input', markConfigChanged);
-        // startDateFilterInput.addEventListener('change', markConfigChanged);
-        // endDateFilterInput.addEventListener('change', markConfigChanged);
-
-        // Close modal when clicking outside content
-        configModal.addEventListener('click', (event) => {
-            if (event.target === configModal) {
-                closeConfigModal();
-            }
-        });
-
-        // Table header sorting
-        tableHeaders.forEach(header => {
-            header.addEventListener('click', () => {
-                const sortBy = header.getAttribute('data-sort-by');
-                if (sortBy) {
-                    sortTable(sortBy);
-                }
-            });
-        });
-
-        // Add event listener for date picker input
-        window.addEventListener('apply.daterangepicker', function (ev) {
-            const input = document.getElementById('filter-input-2');
-            if (!ev.detail.endDate.isValid()) {
-                input.value = '';
-            }
-            filtrarTabelaFetch();
-        });
-
-
-        // --- Initialize App ---
-        document.addEventListener('DOMContentLoaded', () => {
-            initTheme(); // Set initial theme
-
-            setTimeout(() => {
-                fetchData(); // Fetch initial data
-            }, 100);
-
+            // Date Range Picker Initialization
             new DateRangePicker('filter-input-2', {
-                locale: {
-                    format: "DD/MM/YYYY",
-                    applyLabel: "Aplicar",
-                    cancelLabel: "Cancelar",
+                locale: { // User-facing text remains in Portuguese
+                    format: "DD/MM/YYYY", applyLabel: "Aplicar", cancelLabel: "Cancelar",
                     daysOfWeek: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
                     monthNames: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
                 },
-                autoApply: true,
-                alwaysShowCalendars: true,
+                autoApply: true, alwaysShowCalendars: true,
                 ranges: {
                     'Hoje': [moment().startOf('day'), moment().endOf('day')],
                     'Ontem': [moment().subtract(1, 'days').startOf('day'), moment().subtract(1, 'days').endOf('day')],
@@ -833,9 +609,46 @@
                     'Todos': [moment().startOf('day'), moment.invalid()],
                 },
             });
+            document.getElementById('filter-input-2').value = ''; // Clear initial value
 
-            const input = document.getElementById('filter-input-2');
-            input.value = '';
+            // Attach all event listeners
+            elements.itemsPerPageSelect.addEventListener('change', () => { currentPage = 1; fetchData(); });
+            elements.theme.toggleBtn.addEventListener('click', toggleDarkMode);
+            elements.modal.configBtn.addEventListener('click', openConfigModal);
+            elements.modal.cancelBtn.addEventListener('click', closeConfigModal);
+            elements.modal.modal.addEventListener('click', (e) => e.target === elements.modal.modal && closeConfigModal());
+            elements.modal.tickerInput.addEventListener('input', () => { hasConfigChanged = true; updateConfigButtons(); });
+
+            elements.modal.saveBtn.addEventListener('click', () => {
+                saveConfig();
+                closeConfigModal();
+            });
+
+            elements.modal.saveReloadBtn.addEventListener('click', () => {
+                saveConfig();
+                currentPage = 1;
+                closeConfigModal();
+                fetchData();
+            });
+
+            elements.tableHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    const sortBy = header.getAttribute('data-sort-by');
+                    if (sortBy) handleSort(sortBy);
+                });
+            });
+
+            window.addEventListener('apply.daterangepicker', (ev) => {
+                if (!ev.detail.endDate.isValid()) {
+                    document.getElementById('filter-input-2').value = '';
+                }
+                handleFilterChange();
+            });
         });
+        // =================================================================================
+        // SCRIPT END
+        // =================================================================================
     </script>
 </body>
+
+</html>
