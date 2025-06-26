@@ -84,8 +84,6 @@ let filterByDate (d1: string) (d2: string) =
     let d1Opt = tryParseToIso d1
     let d2Opt = tryParseToIso d2
 
-    printfn "******** Parsed dates: %A %A" d1Opt d2Opt
-
     let (startDate, endDate) =
         match d1Opt, d2Opt with
         | Some d1', Some d2' when d1' <> d2' -> (min d1' d2', max d1' d2')
@@ -95,12 +93,9 @@ let filterByDate (d1: string) (d2: string) =
 
     fun (x: NewsDetail) ->
         let date = x.dateTime.Substring(0, 10)
-        let result =
-            not (String.IsNullOrWhiteSpace x.dateTime)
-            && date >= startDate
-            && date <= endDate
-        printfn "Filtering by date: %s to %s => %b | [%s] [%s]" startDate endDate result d1 d2
-        result
+        not (String.IsNullOrWhiteSpace x.dateTime)
+        && date >= startDate
+        && date <= endDate
 
 let filterByFilename (filename: string) =
     let target = filename.ToLowerInvariant()

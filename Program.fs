@@ -88,38 +88,48 @@ let serverUsage () =
 
 let usage () =
     let exeName = Assembly.GetEntryAssembly().GetName().Name
-    printfn "Uso: %s <data1> [<data2>] [<códigos>...]" exeName
-    printfn "     %s server - inicia servidor web" exeName
-    printfn "     %s daemon - inicia servidor web em segundo plano" exeName
-    printfn "     %s list <data1> [<data2>] [<códigos>...] - gera relatorios.html" exeName
-    printfn "     %s index  - recria arquivo index.html" exeName
-    // printfn "     %s fix    - move arquivos após reclassificação de dados " exeName
+    printfn "Uso: %s <comando> [opções]" exeName
+    printfn ""
+    printfn "Comandos disponíveis:"
+    printfn "  serve                                             Inicia o servidor web (em primeiro plano)"
+    printfn "  daemon                                            Inicia o servidor web em segundo plano"
+    printfn "  build-index                                       Recria o arquivo index.html"
+    printfn "  generate-report <data1> [<data2>] [<códigos>...]  Gera relatorios.html"
+    printfn "  update-json <data1> [<data2>] [<códigos>...]      Atualiza relatórios JSON"
+    printfn "  reclassify                                        Move arquivos após reclassificação de dados"
+    printfn "  list-resources                                    Lista os recursos disponíveis"
+    printfn "  serve-api [opções]                                Inicia o servidor de API JSON"
+    printfn ""
+    printfn "  <data1> [<data2>] [<códigos>...]                  Atualiza arquivos (padrão)"
+    printfn ""
+    printfn "  help                                              Mostra esta mensagem de ajuda"
+    printfn ""
     printfn "Formato da data: AAAA-MM-DD (ou 'hoje')"
-    printfn "Códigos: Códigos das empresas ou lidos de report/b3news.cfg se não fornecidos."
-    printfn "         Usar códigos com 4 caracteres."
+    printfn "Códigos: Códigos das empresas (4 caracteres) ou lidos de report/b3news.cfg se não fornecidos."
+    printfn ""
     Environment.Exit 0
 
 [<EntryPoint>]
 let rec main (args: string array) : int =
-    if args.Length = 0 then
+    if args.Length = 0 || args.[0] = "help" then
         usage ()
 
     System.Net.ServicePointManager.SecurityProtocol <-
         System.Net.SecurityProtocolType.Tls12 ||| System.Net.SecurityProtocolType.Tls13
 
     match args.[0] with
-    | "fix" ->
+    | "reclassify" ->
         Fix.reclassify ()
         0
-    | "index" -> createIndex ()
-    | "server" -> runServer ()
+    | "build-index" -> createIndex ()
+    | "serve" -> runServer ()
     | "daemon" -> runDaemon ()
-    | "list" -> reportsFile args[1..]
-    | "resources" ->
+    | "generate-report" -> reportsFile args[1..]
+    | "list-resources" ->
         Predicitions.listResources ()
         0
-    | "json" -> Api.startApiServer args[1..]
-    | "update" -> updateJson args[1..]
+    | "serve-api" -> Api.startApiServer args[1..]
+    | "update-json" -> updateJson args[1..]
     | command -> updateFiles command args[1..]
 
 and createIndex () =
@@ -181,21 +191,24 @@ and reportsFile (args: string array) =
         1
 
 and updateJson (args: string array) =
-    if args.Length < 3 then
+    if args.Length < 1 then
         usage ()
     let d1 = args.[0]
     let d2 =
-        if args.Length > 2 then
+        if args.Length >= 2 then
             args.[1]
         else
             DateTime.Today.ToString("yyyy-MM-dd")
     if not (isDateFormat d1) || not (isDateFormat d2) then
         usage ()
-    let codes = Array.skip 2 args |> Array.toList
+    // let codes = Array.skip 2 args |> Array.toList
+    let codes = Config.readTickersFromFile ()
     printfn "- Atualizando relatórios entre %s e %s:" d1 d2
     printfn "  %A\n" codes
     match JsonStore.updateNews codes d1 d2 with
-    | Ok _ -> 0
+    | Ok num ->
+        Log.notice <| sprintf "- %d relatórios adicionados." num
+        0
     | Error err ->
         Log.error <| sprintf "x Erro (list): %s" err
         1

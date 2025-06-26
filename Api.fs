@@ -8,7 +8,6 @@ open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open System.Net.Http
 open System.Threading.Tasks
-open System.Collections.Generic
 
 type QueryParams =
     { Codes: string list

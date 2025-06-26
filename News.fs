@@ -6,6 +6,7 @@ open System.Text.RegularExpressions
 open System.IO
 open System.Security.Cryptography
 open System.Text
+open System.Globalization
 
 open Thoth.Json.Net
 
@@ -36,31 +37,42 @@ let getCacheFileName d1 d2 =
         |> String.concat ""
     Path.Combine(cacheDir, hash + ".json")
 
+let parseDate (s: string) =
+    DateTime.ParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture)
+
 let fetchAllNews (d1: string) (d2: string) =
     async {
-        Directory.CreateDirectory(cacheDir) |> ignore
-        let cacheFile = getCacheFileName d1 d2
-        if File.Exists(cacheFile) then
-            let! cached = File.ReadAllTextAsync(cacheFile) |> Async.AwaitTask
-            match Decode.Auto.fromString<NwsMsgWrapper list> cached with
-            | Ok data -> return Ok data |> ignore
-            | Error _ -> File.Delete(cacheFile) |> ignore // fallback to fetch if cache is corrupted
-        use client = new HttpClient()
-        let query = System.Web.HttpUtility.ParseQueryString("")
-        query.Add("agencia", "18")
-        query.Add("dataInicial", d1)
-        query.Add("dataFinal", d2)
-        let uriBuilder =
-            UriBuilder("https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias")
-        uriBuilder.Query <- query.ToString()
-        let! response = client.GetAsync(uriBuilder.Uri) |> Async.AwaitTask
-        response.EnsureSuccessStatusCode() |> ignore
-        let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-        match Decode.Auto.fromString<NwsMsgWrapper list> content with
-        | Ok data ->
-            do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
-            return Ok data
-        | Error err -> return Error err
+        let startDate = parseDate d1
+        let endDate = parseDate d2
+        if (endDate - startDate).TotalDays > 93.0 then // 3 months (approx)
+            return Error "O intervalo máximo permitido é de 3 meses."
+        else
+            Directory.CreateDirectory(cacheDir) |> ignore
+            let cacheFile = getCacheFileName d1 d2
+            if File.Exists(cacheFile) then
+                let! cached = File.ReadAllTextAsync(cacheFile) |> Async.AwaitTask
+                match Decode.Auto.fromString<NwsMsgWrapper list> cached with
+                | Ok data -> return Ok data |> ignore
+                | Error _ -> File.Delete(cacheFile) |> ignore // fallback to fetch if cache is corrupted
+            use client = new HttpClient()
+            let query = System.Web.HttpUtility.ParseQueryString("")
+            query.Add("agencia", "18")
+            query.Add("dataInicial", d1)
+            query.Add("dataFinal", d2)
+            let uriBuilder =
+                UriBuilder("https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias")
+            uriBuilder.Query <- query.ToString()
+            try
+                let! response = client.GetAsync(uriBuilder.Uri) |> Async.AwaitTask
+                response.EnsureSuccessStatusCode() |> ignore
+                let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+                match Decode.Auto.fromString<NwsMsgWrapper list> content with
+                | Ok data ->
+                    do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
+                    return Ok data
+                | Error err -> return Error <| sprintf "Erro ao listar notícias: %s" err
+            with ex ->
+                return Error(sprintf "HTTP error: %s" ex.Message)
     }
 
 let getTicker (txt: string) =
