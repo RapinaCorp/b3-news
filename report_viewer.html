@@ -4,7 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Reports</title>
+    <title>Relatório de Empresas e FIIs</title>
+
+    <!-- Favicon -->
+    <link rel="icon"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%F0%9F%A6%85%3C/text%3E%3C/svg%3E">
+
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -201,7 +206,6 @@
         let searchDate = '';
         let searchFileName = '';
         let currentPage = 1;
-        let itemsPerPage = 20;
         let totalPagesFromServer = 0; // New variable to store total pages from server
         let sortColumn = null;
         let sortDirection = 'asc'; // 'asc' or 'desc'
@@ -438,7 +442,7 @@
             try {
                 // Construct query parameters
                 const params = new URLSearchParams();
-                params.append('pageSize', itemsPerPage);
+                params.append('pageSize', itemsPerPageSelect.value || '20'); // Default to 20 if not set
                 params.append('page', currentPage);
 
                 if (currentConfig.ticker || searchCode.length == 4) {
@@ -664,7 +668,6 @@
          * @param {Event} event - The change event from the select element.
          */
         function changeItemsPerPage(event) {
-            itemsPerPage = parseInt(event.target.value, 10);
             currentPage = 1; // Reset to first page
             fetchData(); // Re-fetch data with new items per page
         }
