@@ -8,6 +8,7 @@ open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open System.Net.Http
 open System.Threading.Tasks
+open Microsoft.Extensions.Configuration
 
 type QueryParams =
     { Codes: string list
@@ -167,6 +168,7 @@ let handleIndexHtml (ctx: HttpContext) =
 
 let startApiServer (args: string array) =
     let builder = WebApplication.CreateBuilder args
+    builder.Configuration.AddJsonFile Config.configFileName |> ignore
 
     // Add services
     builder.Services.AddControllers() |> ignore

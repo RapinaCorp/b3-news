@@ -45,7 +45,33 @@
         * { "codigoInstituicao": "2", "numeroProtocolo": "{nid}", "token": "", "versaoCaptcha": "" }
 
 
+## Arquivo de configuração
 
+### b3news.settings.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "Kestrel": {
+    "Endpoints": {
+      "Http": {
+        "Url": "http://localhost:8082"
+      }
+    }
+  },
+  "Tickers": [
+    "ABEV",
+    "PETR",
+    "VALE",
+  ]
+}
+```
 
 ## Compilando do Windows para Linux
 

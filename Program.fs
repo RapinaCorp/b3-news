@@ -191,9 +191,11 @@ and reportsFile (args: string array) =
         1
 
 and updateJson (args: string array) =
-    if args.Length < 1 then
-        usage ()
-    let d1 = args.[0]
+    let d1 =
+        if args.Length >= 1 then
+            args.[0]
+        else
+            DateTime.Today.ToString("yyyy-MM-dd")
     let d2 =
         if args.Length >= 2 then
             args.[1]
