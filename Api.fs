@@ -104,6 +104,27 @@ let handleLoadPagedNews (ctx: HttpContext) =
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
 
+// Hold the last modified time of the reports.json file
+let mutable _lastModified = System.DateTime.MinValue
+
+// Check if the file Config.reportsJson has changed since last check
+let handleHasNewReports (ctx: HttpContext) : Task =
+    task {
+        try
+            let filePath = "reports.json"
+            if System.IO.File.Exists(filePath) then
+                let lastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
+                if lastModified > _lastModified && _lastModified <> System.DateTime.MinValue then
+                    _lastModified <- lastModified
+                    do! writeJsonResponse ctx HttpStatusCode.OK {| hasNewReports = true |}
+                else
+                    do! writeJsonResponse ctx HttpStatusCode.OK {| hasNewReports = false |}
+            else
+                do! writeErrorResponse ctx HttpStatusCode.NotFound "reports.json not found"
+        with ex ->
+            do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
+    }
+
 let handlePdfRequest (ctx: HttpContext) : Task =
     task {
         let id = ctx.Request.RouteValues["id"] :?> string
@@ -181,6 +202,9 @@ let startApiServer (args: string array) =
 
     // Custom route for /pdf/{id}
     app.MapGet("/pdf/{id}", handlePdfRequest) |> ignore
+
+    // Route for /status/new-reports
+    app.MapGet("/status/new-reports", handleHasNewReports) |> ignore
 
     // Route your handler directly
     app.MapGet(

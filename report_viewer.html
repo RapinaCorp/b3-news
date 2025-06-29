@@ -66,13 +66,21 @@
     <div id="app"
         class="w-full lg:max-w-[calc(90%)] bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 transition-colors duration-300">
         <header class="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
-            <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-200">Relatórios de Empresas e FIIs</h1>
-            <div class="flex items-center space-x-4">
-                <button id="configBtn" aria-label="Open settings"
+            <div class="flex items-center space-x-4 sm:space-x-2">
+                <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-200">Relatórios de Empresas e FIIs</h1>
+                <button id="update-indicator" title="Clique para atualizar" aria-label="Clique para atualizar"
+                    class="p-1 rounded-full text-2xl hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors duration-200"
+                    disabled>
+                    <span id="mailbox-empty"> 📭 </span>
+                    <span id="mailbox-full" class="hidden"> 📬 </span>
+                </button>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="configBtn" title="Abrir configurações" aria-label="Abrir configurações"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors duration-200">
                     ⚙️
                 </button>
-                <button id="themeToggle" aria-label="Toggle dark/light theme"
+                <button id="themeToggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"
                     class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors duration-200">
                     <span id="moonIcon">🌙</span>
                     <span id="sunIcon" class="hidden">☀️</span>
@@ -182,7 +190,9 @@
                 fileName: ''
             };
             let globalConfig = {
-                ticker: ''
+                ticker: '',
+                hasNewReports: false,
+                intervalForNewReports: null,
             };
             let hasConfigChanged = false;
 
@@ -193,6 +203,7 @@
             const elements = {
                 app: document.getElementById('app'),
                 tableHeader: document.getElementById('reportTableHeader'),
+                tableHeaders: document.querySelectorAll('th[data-sort-by]'),
                 tableBody: document.getElementById('reportTableBody'),
                 loadingIndicator: document.getElementById('loadingIndicator'),
                 itemsPerPageSelect: document.getElementById('itemsPerPageSelect'),
@@ -211,7 +222,9 @@
                     saveBtn: document.getElementById('saveConfigBtn'),
                     saveReloadBtn: document.getElementById('saveReloadConfigBtn'),
                 },
-                tableHeaders: document.querySelectorAll('th[data-sort-by]')
+                updateIndicator: document.getElementById('update-indicator'),
+                mailboxEmpty: document.getElementById('mailbox-empty'),
+                mailboxFull: document.getElementById('mailbox-full'),
             };
 
 
@@ -250,10 +263,48 @@
                 return date.toLocaleString('pt-BR', options).replace(',', '');
             }
 
+            function emptyMailbox() {
+                globalConfig.hasNewReports = false;
+                elements.updateIndicator.disabled = true;
+                elements.mailboxEmpty.classList.remove('hidden');
+                elements.mailboxFull.classList.add('hidden');
+            }
+
+            function fillMailbox() {
+                globalConfig.hasNewReports = true;
+                elements.updateIndicator.disabled = false;
+                elements.mailboxEmpty.classList.add('hidden');
+                elements.mailboxFull.classList.remove('hidden');
+            }
+
 
             // --- API & DATA HANDLING ---
             // Functions responsible for fetching and managing data from the server.
             // -----------------------------------------------------------------------------
+
+            /**
+             * Builds URLSearchParams from current filter and sort state.
+             */
+            function buildApiParams(includeLastId = false) {
+                const params = new URLSearchParams({
+                    pageSize: elements.itemsPerPageSelect.value || 20,
+                    page: currentPage,
+                    sortBy: sortState.column,
+                    sortDirection: sortState.direction,
+                });
+                const codes = filterState.code
+                    ? filterState.code.trim().toUpperCase()
+                    : globalConfig.ticker.split(',').map(t => t.trim()).filter(Boolean).join(',');
+                if (codes) params.append('codes', codes);
+                if (filterState.type) params.append('reportType', filterState.type);
+                if (filterState.date) params.append('date', filterState.date);
+                if (filterState.fileName) params.append('fileName', filterState.fileName);
+                if (includeLastId) {
+                    const lastId = localStorage.getItem('lastRecordId');
+                    if (lastId) params.append('lastId', lastId);
+                }
+                return params;
+            }
 
             /**
              * Fetches report data from the API based on the current state.
@@ -261,23 +312,7 @@
             async function fetchData() {
                 showLoading();
                 try {
-                    const params = new URLSearchParams({
-                        pageSize: elements.itemsPerPageSelect.value || 20,
-                        page: currentPage,
-                        sortBy: sortState.column,
-                        sortDirection: sortState.direction,
-                    });
-
-                    // Add filters to query parameters if they exist
-                    const codes = filterState.code
-                        ? filterState.code.trim().toUpperCase()
-                        : globalConfig.ticker.split(',').map(t => t.trim()).filter(Boolean).join(',');
-
-                    if (codes) params.append('codes', codes);
-                    if (filterState.type) params.append('reportType', filterState.type);
-                    if (filterState.date) params.append('date', filterState.date);
-                    if (filterState.fileName) params.append('fileName', filterState.fileName);
-
+                    const params = buildApiParams(true);
                     const apiUrl = `/api/news?${params.toString()}`;
                     console.log("Fetching from:", apiUrl); // For debugging
 
@@ -287,6 +322,18 @@
                     const data = await response.json();
                     reports = data.news || [];
                     totalPagesFromServer = data.totalPages || 0;
+
+                    // Store the last record id if present
+                    if (data.lastId !== undefined) {
+                        localStorage.setItem('lastRecordId', data.lastId);
+                    }
+
+                    // Show mailbox full if hasNewRecords is true
+                    if (data.hasNewRecords) {
+                        fillMailbox();
+                    } else {
+                        emptyMailbox();
+                    }
 
                     renderTable();
                     renderPaginationControls();
@@ -301,6 +348,28 @@
                 } finally {
                     hideLoading();
                     elements.app.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+
+            /**
+             * Checks for new reports and updates the UI accordingly.
+             */
+            async function checkForNewReports() {
+                try {
+                    const params = buildApiParams(false);
+                    const response = await fetch(`/status/last-id?${params.toString()}`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const data = await response.json();
+                    const lastId = data.lastId;
+                    const storedId = localStorage.getItem('lastRecordId');
+                    if (lastId !== undefined && (!storedId || Number(lastId) > Number(storedId))) {
+                        fillMailbox();
+                    } else {
+                        emptyMailbox();
+                    }
+                } catch (error) {
+                    console.error('Error checking for new reports:', error);
                 }
             }
 
@@ -589,6 +658,7 @@
             initializeFilterRow();
             loadConfigFromLocalStorage();
             updateSortIcons();
+            checkForNewReports();
 
             // Initial data fetch
             fetchData();
@@ -643,6 +713,21 @@
                     document.getElementById('filter-input-2').value = '';
                 }
                 handleFilterChange();
+            });
+
+            // New reports indicator
+            elements.updateIndicator.addEventListener('click', fetchData);
+            window.addEventListener('focus', () => {
+                if (globalConfig.intervalForNewReports === null) {
+                    globalConfig.intervalForNewReports = setInterval(checkForNewReports, 60000); // 1 min
+                    checkForNewReports();
+                }
+            });
+            window.addEventListener('blur', () => {
+                if (globalConfig.intervalForNewReports) {
+                    clearInterval(globalConfig.intervalForNewReports);
+                    globalConfig.intervalForNewReports = null;
+                }
             });
         });
         // =================================================================================
