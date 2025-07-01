@@ -25,9 +25,13 @@ type NewsFilterCriteria =
       SortField: SortField option
       SortDirection: SortDirection
       Page: int
-      PageSize: int }
+      PageSize: int
+      ClientRecordCount: int option }
 
-type PagedResult<'a> = { Items: 'a list; TotalPages: int }
+type PagedResult<'a> =
+    { Items: 'a list
+      TotalPages: int
+      TotalRecords: int }
 
 // Factory
 let newCriteria () =
@@ -39,7 +43,8 @@ let newCriteria () =
       SortField = None
       SortDirection = Desc
       Page = 1
-      PageSize = 50 }
+      PageSize = 50
+      ClientRecordCount = None }
 
 // Builder functions
 let withTickers tickers criteria = { criteria with Tickers = tickers }
@@ -64,6 +69,15 @@ let withPagination page pageSize criteria =
     { criteria with
         Page = page
         PageSize = pageSize }
+
+let withClientRecordCount countOpt criteria =
+    match countOpt with
+    | Some count when count > 0 ->
+        { criteria with
+            ClientRecordCount = Some count }
+    | _ ->
+        { criteria with
+            ClientRecordCount = None }
 
 // Filtering functions
 let filterByCodes codes =
@@ -111,11 +125,13 @@ let filterByReportType (reportType: string) =
 
 // Safe pagination
 let paginate (pageSize: int) (page: int) (items: 'a list) : PagedResult<'a> =
+    let totalItems = List.length items
     if pageSize <= 0 then
-        { Items = []; TotalPages = 0 }
+        { Items = []
+          TotalPages = 0
+          TotalRecords = totalItems }
     else
         let pageIndex = max 0 (page - 1)
-        let totalItems = List.length items
         let totalPages =
             if totalItems = 0 then
                 0
@@ -125,16 +141,21 @@ let paginate (pageSize: int) (page: int) (items: 'a list) : PagedResult<'a> =
         let startIndex = pageIndex * pageSize
 
         if pageIndex >= totalPages && totalItems > 0 then
-            { Items = []; TotalPages = totalPages }
+            { Items = []
+              TotalPages = totalPages
+              TotalRecords = totalItems }
         elif totalItems = 0 then
-            { Items = []; TotalPages = 0 }
+            { Items = []
+              TotalPages = 0
+              TotalRecords = 0 }
         else
             let remainingItemsCount = totalItems - startIndex
             let itemsToTake = min pageSize remainingItemsCount
             let pagedItems = items |> List.skip startIndex |> List.take itemsToTake
 
             { Items = pagedItems
-              TotalPages = totalPages }
+              TotalPages = totalPages
+              TotalRecords = totalItems }
 
 // Sorting
 let sortNews (field: SortField) (direction: SortDirection) (items: NewsDetail list) =
@@ -193,9 +214,15 @@ let filterAll (criteria: NewsFilterCriteria) (details: NewsDetail list) : PagedR
                 None)
         |> Array.toList
 
+    // Limit dataset length if clientRecordCount is provided (apply after filtering, before sorting)
+    let limited =
+        match criteria.ClientRecordCount with
+        | Some n when n > 0 -> filtered |> List.truncate n
+        | _ -> filtered
+
     let sorted =
         match criteria.SortField with
-        | Some field -> sortNews field criteria.SortDirection filtered
-        | None -> filtered
+        | Some field -> sortNews field criteria.SortDirection limited
+        | None -> limited
 
     paginate criteria.PageSize criteria.Page sorted

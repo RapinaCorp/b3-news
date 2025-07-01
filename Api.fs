@@ -18,7 +18,9 @@ type QueryParams =
       SortBy: DetailsQuery.SortField
       SortDirection: DetailsQuery.SortDirection
       Page: int
-      PageSize: int }
+      PageSize: int
+      ClientRecordCount: int option
+      UpdateRecords: bool }
 
 let private parseQuery (query: IQueryCollection) =
     let getStringValue key defaultValue =
@@ -34,6 +36,25 @@ let private parseQuery (query: IQueryCollection) =
             | false, _ -> defaultValue
         else
             defaultValue
+
+    let getOptIntValue key =
+        if query.ContainsKey(key) then
+            match System.Int32.TryParse(query.[key].ToString()) with
+            | true, value when value > 0 -> Some value
+            | _ -> None
+
+        else
+            None
+
+    let getBoolValue key =
+        if query.ContainsKey(key) then
+            match query.[key].ToString().ToLowerInvariant() with
+            | "true"
+            | "1"
+            | "yes" -> true
+            | _ -> false
+        else
+            false
 
     let getSortField =
         match getStringValue "sortBy" "dateTime" with
@@ -64,7 +85,9 @@ let private parseQuery (query: IQueryCollection) =
       SortBy = getSortField
       SortDirection = getSortDirection
       Page = getIntValue "page" 1
-      PageSize = getIntValue "pageSize" 20 }
+      PageSize = getIntValue "pageSize" 20
+      ClientRecordCount = getOptIntValue "clientRecordCount"
+      UpdateRecords = getBoolValue "updateRecords" }
 
 // Response helpers
 let private writeJsonResponse (ctx: HttpContext) statusCode data =
@@ -80,11 +103,11 @@ let private writeErrorResponse (ctx: HttpContext) statusCode message =
     writeJsonResponse ctx statusCode {| error = message |}
 
 // API handlers
-let handleLoadPagedNews (ctx: HttpContext) =
-    async {
+let handleLoadPagedNews (ctx: HttpContext) : Task =
+    task {
         try
             let p = parseQuery ctx.Request.Query
-            let c =
+            let crit =
                 DetailsQuery.newCriteria ()
                 |> DetailsQuery.withTickers p.Codes
                 |> DetailsQuery.withDateRange (fst p.Dates) (snd p.Dates)
@@ -92,33 +115,53 @@ let handleLoadPagedNews (ctx: HttpContext) =
                 |> DetailsQuery.withReportType p.ReportType
                 |> DetailsQuery.withPagination p.Page p.PageSize
                 |> DetailsQuery.withSortBy p.SortBy p.SortDirection
+                |> (fun crit' ->
+                    if p.UpdateRecords then
+                        crit'
+                    else
+                        DetailsQuery.withClientRecordCount p.ClientRecordCount crit')
 
-            match JsonStore.loadPagedNewsWithCriteria "reports.json" c with
-            | Ok(r) ->
+            match JsonStore.loadPagedNewsWithCriteria Config.reportsJson crit with
+            | Error err -> do! writeErrorResponse ctx HttpStatusCode.BadRequest err
+            | Ok r ->
                 let response =
                     {| news = r.Items
-                       totalPages = r.TotalPages |}
+                       totalPages = r.TotalPages
+                       totalRecords = r.TotalRecords |}
                 do! writeJsonResponse ctx HttpStatusCode.OK response
-            | Error err -> do! writeErrorResponse ctx HttpStatusCode.BadRequest err
         with ex ->
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
 
 // Hold the last modified time of the reports.json file
 let mutable _lastModified = System.DateTime.MinValue
+let mutable _lastCount = 0
 
 // Check if the file Config.reportsJson has changed since last check
-let handleHasNewReports (ctx: HttpContext) : Task =
+let handleNumberOfReports (ctx: HttpContext) : Task =
     task {
         try
-            let filePath = "reports.json"
-            if System.IO.File.Exists(filePath) then
-                let lastModified = System.IO.File.GetLastWriteTimeUtc(filePath)
-                if lastModified > _lastModified && _lastModified <> System.DateTime.MinValue then
+            if System.IO.File.Exists(Config.reportsJson) then
+                let lastModified = System.IO.File.GetLastWriteTimeUtc(Config.reportsJson)
+                if lastModified > _lastModified || _lastModified <> System.DateTime.MinValue then
                     _lastModified <- lastModified
-                    do! writeJsonResponse ctx HttpStatusCode.OK {| hasNewReports = true |}
+
+                    let p = parseQuery ctx.Request.Query
+                    let c =
+                        DetailsQuery.newCriteria ()
+                        |> DetailsQuery.withTickers p.Codes
+                        |> DetailsQuery.withDateRange (fst p.Dates) (snd p.Dates)
+                        |> DetailsQuery.withFilename p.Filename
+                        |> DetailsQuery.withReportType p.ReportType
+                        |> DetailsQuery.withPagination 1 9999999
+
+                    match JsonStore.loadPagedNewsWithCriteria Config.reportsJson c with
+                    | Error err -> do! writeErrorResponse ctx HttpStatusCode.BadRequest err
+                    | Ok r ->
+                        _lastCount <- r.Items.Length
+                        do! writeJsonResponse ctx HttpStatusCode.OK {| totalRecords = r.Items.Length |}
                 else
-                    do! writeJsonResponse ctx HttpStatusCode.OK {| hasNewReports = false |}
+                    do! writeJsonResponse ctx HttpStatusCode.OK {| totalRecords = _lastCount |}
             else
                 do! writeErrorResponse ctx HttpStatusCode.NotFound "reports.json not found"
         with ex ->
@@ -203,15 +246,11 @@ let startApiServer (args: string array) =
     // Custom route for /pdf/{id}
     app.MapGet("/pdf/{id}", handlePdfRequest) |> ignore
 
-    // Route for /status/new-reports
-    app.MapGet("/status/new-reports", handleHasNewReports) |> ignore
+    // Route for /status/count
+    app.MapGet("/api/news/count", handleNumberOfReports) |> ignore
 
     // Route your handler directly
-    app.MapGet(
-        "/api/news",
-        fun (ctx: HttpContext) -> handleLoadPagedNews ctx |> Async.StartAsTask :> System.Threading.Tasks.Task
-    )
-    |> ignore
+    app.MapGet("/api/news", handleLoadPagedNews) |> ignore
 
     // Map the root route to serve index.html
     app.MapGet("/", (fun (ctx: HttpContext) -> handleIndexHtml ctx |> Async.StartAsTask :> System.Threading.Tasks.Task))

@@ -40,7 +40,7 @@ let updateNewsCust jsonPath codes startDate endDate : Result<int, string> =
             |> Result.map (fun () -> addedCount)))
 
 let updateNews codes startDate endDate : Result<int, string> =
-    updateNewsCust "reports.json" codes startDate endDate
+    updateNewsCust Config.reportsJson codes startDate endDate
 
 let loadPagedNewsWithCriteria jsonPath (criteria: NewsFilterCriteria) : Result<PagedResult<Details.NewsDetail>, string> =
     tryRead jsonPath
@@ -49,3 +49,7 @@ let loadPagedNewsWithCriteria jsonPath (criteria: NewsFilterCriteria) : Result<P
             Error "No news details found in the JSON file."
         else
             Ok <| DetailsQuery.filterAll criteria details)
+
+let getNewsCount () : Result<int, string> =
+    tryRead Config.reportsJson
+    |> Result.map List.length

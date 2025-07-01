@@ -4,6 +4,7 @@ open System.IO
 open System.Text.Json
 
 let configFileName = "b3news.settings.json"
+let reportsJson = "reports.json"
 
 let (+/) path1 path2 = Path.Combine(path1, path2)
 

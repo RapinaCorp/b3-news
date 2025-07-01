@@ -1,54 +1,76 @@
-## Fluxo
+# B3News
 
-1. Carregar lista com o id dos relatórios (filtrado pelas datas e tickers)
-   1. https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias
-      * agencia=18
-      * dataInicial=_
-      * dataFinal=_
-   2. Resposta: 
-   ```[
-        {
-          "NwsMsg": {
-            "IdAgencia": 18,
-            "content": null,
-            "dateTime": "2025-06-04 19:58:29",
-            "headline": "ISEC (IMWL) CRI E:285 S:1(s) ANUNCIO INICIO - 04/06/2025",
-            "id": 2960042
-          }
-        },
-        {
-          "NwsMsg": {
-            "IdAgencia": 18,
-            "content": null,
-            "dateTime": "2025-06-04 19:57:27",
-            "headline": "AZZAS 2154 (AZZA-NM) - VM Posicao Individual (Cia,Controladas e Coligadas)",
-            "id": 2960041
-         },...
-      ]
-      ```
-2. Extraír os detalhes de cada um dos relatórios (Details.fetchDetails)
-    1. https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail
-      * idNoticia
-      * agencia
-      * dataNoticia
-    2. Resposta: arquivo html
+B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notícias e relatórios financeiros da bolsa de valores B3. A ferramenta oferece uma interface de linha de comando para processamento de dados e uma interface web para visualizar os dados coletados.
 
-3. Do arquivo html, busca-se por 2 padrões no conteúdo:
-    1. let patternFnet = "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento\\?id=([0-9]+)"
+## Funcionalidades
 
-    2. let patternEnet = "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
+*   **Coleta de Notícias:** Baixa e processa relatórios e comunicados diretamente do site da B3.
+*   **Cache Local:** Armazena os dados em um arquivo JSON local (`reports.json`) para acesso rápido e para evitar downloads repetidos.
+*   **Interface Web Interativa:** Uma página web (`report_viewer.html`) para visualizar, filtrar, ordenar e paginar os relatórios.
+*   **Atualizações em Tempo Real:** A interface web verifica e notifica o usuário sobre novos relatórios disponíveis.
+*   **Filtragem Avançada:** Permite filtrar relatórios por ticker, tipo, data e conteúdo do nome do arquivo.
 
-4. Com este último id:
-    1. Arquivo FNET: https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=<id>
-    2. Arqvuivo ENET (retorna um pdf em base64): https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
-        * POST
-        * { "codigoInstituicao": "2", "numeroProtocolo": "{nid}", "token": "", "versaoCaptcha": "" }
+## Como Iniciar
 
+### Pré-requisitos
 
-## Arquivo de configuração
+*   [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-### b3news.settings.json
+### Compilando e Executando
 
+1.  **Clone o repositório:**
+    ```bash
+    git clone <url-do-repositorio>
+    cd B3News
+    ```
+
+2.  **Compile o projeto:**
+    ```bash
+    dotnet build
+    ```
+
+3.  **Execute a aplicação:**
+    Para ver as opções de linha de comando disponíveis, execute:
+    ```bash
+    dotnet run
+    ```
+
+## Como Usar
+
+A aplicação pode ser executada com diferentes argumentos para realizar tarefas específicas:
+
+*   **Atualizar o cache de notícias:**
+    Este comando baixa as notícias do dia e as adiciona ao arquivo `reports.json`.
+    ```bash
+    dotnet run update-json
+    ```
+
+*   **Iniciar o servidor web:**
+    Este comando inicia um servidor local para servir a interface web de visualização.
+    ```bash
+    dotnet run serve-api
+    ```
+    Após iniciar, acesse [http://localhost:8082](http://localhost:8082) no seu navegador.
+
+## Lógica de Paginação Estável
+
+Para garantir uma experiência de usuário consistente ao navegar pelas páginas de resultados, a aplicação utiliza um mecanismo de "snapshot" que previne que novos dados interfiram na paginação atual.
+
+1.  **Snapshot Inicial:** Quando a página é carregada ou um filtro é aplicado, o frontend solicita os dados ao servidor e armazena o número total de registros (`totalRecords`) recebido. Este número, chamado `clientRecordCount`, representa um "snapshot" do estado do dataset naquele momento.
+
+2.  **Requisições de Paginação:** Ao navegar para outras páginas (ex: "2", "Próxima"), o frontend envia o valor `clientRecordCount` junto com a requisição.
+
+3.  **Processamento no Servidor:** O servidor recebe este valor e, antes de ordenar e paginar os resultados, ele **trunca** o conjunto de dados para que contenha exatamente o número de registros que o cliente conhece. Isso "congela" a visão do cliente sobre os dados, ignorando quaisquer relatórios que tenham chegado após o snapshot inicial.
+
+4.  **Notificação de Atualização:** O usuário é notificado sobre novos relatórios através de um ícone de "caixa de correio" na interface. Ao clicar neste ícone, uma nova requisição é feita para obter os dados mais recentes, um novo snapshot é criado e a contagem de registros do cliente é atualizada.
+
+Este mecanismo garante que a ordem e o conteúdo das páginas permaneçam estáveis durante a navegação, evitando que um item da página 2 apareça de repente na página 1.
+
+## Configuração
+
+A aplicação utiliza um arquivo `b3news.settings.json` para configurações. A principal configuração que você pode querer alterar é a lista de `Tickers` para filtrar as notícias durante o download.
+
+**Exemplo de `b3news.settings.json`:**
 ```json
 {
   "Logging": {
@@ -68,30 +90,31 @@
   "Tickers": [
     "ABEV",
     "PETR",
-    "VALE",
+    "VALE"
   ]
 }
 ```
 
-## Compilando do Windows para Linux
+## Compilando para Outras Plataformas
 
-`dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true`
+É possível compilar a aplicação como um executável auto-contido para outras plataformas, como o Linux:
+
+```bash
+dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
+```
 
 ## Roadmap
 
-* Armazenar lista em um banco de dados (sqlite ou b-tree)
-  * [simple-pagination.js](https://gist.github.com/kottenator/9d936eb3e4e3c3e02598)
-  * [Persisting data report](https://chatgpt.com/share/6851e67e-a5b0-800d-bbfd-c9307e46b3a6)
-  * [Append unique data to JSON](https://chatgpt.com/share/6851e862-1888-800d-8a4c-ab93ed6ef6ce)
+* ~~Armazenar lista em um banco de dados (sqlite ou b-tree) => json~~
+* ~~[simple-pagination.js](https://gist.github.com/kottenator/9d936eb3e4e3c3e02598)~~
+* ~~[Persisting data report](https://chatgpt.com/share/6851e67e-a5b0-800d-bbfd-c9307e46b3a6)~~
+* ~~[Append unique data to JSON](https://chatgpt.com/share/6851e862-1888-800d-8a4c-ab93ed6ef6ce)~~
 
 
 ## REST tests
 
-GET https://dummyjson.com/c/78db-003d-4189-a446
-
-GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias?agencia=18&dataInicial=2025-06-04&datafinal=2025-06-04
-
-GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail?idNoticia=2960041&agencia=18&dataNoticia=2025-06-04
-
-GET http://localhost:8082/api/news?Codes=PETR,VALE&PageSize=5&Page=2&filename=mercado
-GET http://localhost:8082/api/news?Codes=PETR,VALE
+* GET https://dummyjson.com/c/78db-003d-4189-a446
+* GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias?agencia=18&dataInicial=2025-06-04&datafinal=2025-06-04
+* GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail?idNoticia=2960041&agencia=18&dataNoticia=2025-06-04
+* GET http://localhost:8082/api/news?Codes=PETR,VALE&PageSize=5&Page=2&filename=mercado
+* GET http://localhost:8082/api/news?Codes=PETR,VALE
