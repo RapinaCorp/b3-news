@@ -20,26 +20,29 @@ let private tryWrite path details =
         Ok()
     with e -> Error $"Error writing JSON: {e.Message}"
 
-let updateNewsCust jsonPath codes startDate endDate : Result<int, string> =
-    let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
+let updateNewsCust jsonPath codes startDate endDate : Async<Result<int, string>> =
+    async {
+        let! detailsResult = Details.fetchNewsDetailsAsync codes startDate endDate
+        return
+            detailsResult
+            |> Result.bind (fun newDetails ->
+                let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
+                let newDetailsTransformed =
+                    newDetails |> List.map (fun nd -> { nd with url = Download.getRealUrl nd.url })
+                tryRead jsonPath
+                |> Result.bind (fun existing ->
+                    let merged =
+                        newDetailsTransformed @ existing
+                        |> List.distinctBy key
+                        |> List.sortByDescending (_.dateTime)
 
-    Details.fetchNewsDetails codes startDate endDate
-    |> Result.bind (fun newDetails ->
-        let newDetailsTransformed =
-            newDetails |> List.map (fun nd -> { nd with url = Download.getRealUrl nd.url })
-        tryRead jsonPath
-        |> Result.bind (fun existing ->
-            let merged =
-                newDetailsTransformed @ existing
-                |> List.distinctBy key
-                |> List.sortByDescending (_.dateTime)
+                    let addedCount = List.length merged - List.length existing
 
-            let addedCount = List.length merged - List.length existing
+                    tryWrite jsonPath merged
+                    |> Result.map (fun () -> addedCount)))
+    }
 
-            tryWrite jsonPath merged
-            |> Result.map (fun () -> addedCount)))
-
-let updateNews codes startDate endDate : Result<int, string> =
+let updateNews codes startDate endDate : Async<Result<int,string>> =
     updateNewsCust Config.reportsJson codes startDate endDate
 
 let loadPagedNewsWithCriteria jsonPath (criteria: NewsFilterCriteria) : Result<PagedResult<Details.NewsDetail>, string> =

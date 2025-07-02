@@ -108,11 +108,13 @@ let fetchDetails (newsID: string) (agency: string) (dt: string) =
             return response
     }
 
-let getURL (resp: HttpResponseMessage) : string =
-    let txt = resp.Content.ReadAsStringAsync().Result
-    let regexPattern = "(http[s]*://[^\\?]+\\?[Ii][Dd]=[0-9]+)"
-    let matchResult = Regex.Match(txt, regexPattern)
-    matchResult.Value
+let getURLAsync (resp: HttpResponseMessage) : Async<string> =
+    async {
+        let! txt = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
+        let regexPattern = "(http[s]*://[^\\?]+\\?[Ii][Dd]=[0-9]+)"
+        let matchResult = Regex.Match(txt, regexPattern)
+        return matchResult.Value
+    }
 
 let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>> =
     async {
@@ -125,14 +127,13 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
         let code = int status
         let msg = status.ToString()
 
-        // printfn "%d => %s (%s) [%s] %s" code ndateTime nidAgencia msg nwsmsg.headline
-
         if code < 200 || code >= 300 then
             return (Error("[" + code.ToString() + "] " + msg + ": " + string (nwsmsg.headline)))
         else
             match ndateTime + "-" + nwsmsg.headline |> safeFilename with
             | None -> return (Error "nome do arquivo não disponível")
             | Some filename ->
+                let! url = getURLAsync details
                 return
                     Ok(
                         { ticker = nwsmsg.ticker |> Option.defaultValue ""
@@ -142,28 +143,30 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
                             match List.tryParseReportFromFilename filename with
                             | Some r -> r.name
                             | None -> ""
-                          url = getURL details }
+                          url = url }
                     )
     }
 
-let transform (f: 'a -> Async<Result<'b, string>>) (list: 'a list) : Result<'b list, string> =
-    let rec sequenceResults acc =
-        function
-        | [] -> Ok(List.rev acc)
-        | x :: xs ->
-            match f x with
-            | Success(Ok value) -> sequenceResults (value :: acc) xs
-            | Success(Error errorMessage) -> Error errorMessage
-            | Failure ex -> Error ex.Message
+let transformAsync (f: 'a -> Async<Result<'b, string>>) (list: 'a list) : Async<Result<'b list, string>> =
+    async {
+        let! results = list |> List.map f |> Async.Parallel
 
-    sequenceResults [] list
+        let folder (state: Result<'b list, string>) (next: Result<'b, string>) =
+            match state, next with
+            | Ok acc, Ok value -> Ok(value :: acc)
+            | Error err, _ -> Error err
+            | _, Error err -> Error err
 
-let fetchNewsDetails (codes: string list) (d1: string) (d2: string) : Result<NewsDetail list, string> =
-    let result = News.fetchAndFilterNews codes d1 d2
+        let finalResult = Array.fold folder (Ok []) results
 
-    match result with
-    | News.Success nwsmsgs ->
-        match nwsmsgs with
-        | Ok nwsmsgs' -> transform nwsMsgToNewsDetail nwsmsgs'
-        | Error errorMessage -> Error errorMessage
-    | News.Failure ex -> Error ex.Message
+        return finalResult |> Result.map List.rev
+    }
+
+let fetchNewsDetailsAsync (codes: string list) (d1: string) (d2: string) : Async<Result<NewsDetail list, string>> =
+    async {
+        let! result = News.fetchAndFilterNews codes d1 d2
+
+        match result with
+        | Ok nwsmsgs' -> return! transformAsync nwsMsgToNewsDetail nwsmsgs'
+        | Error errorMessage -> return Error errorMessage
+    }

@@ -117,17 +117,13 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
     }
 
 let getBody (url: string) =
-    let m =
-        List.tryFind (fun pattern -> Regex.IsMatch(url, pattern)) [ patternFnet; patternEnet ]
-
     async {
-        match m with
-        | None -> return Error $"URL inválida '{url}'"
-        | Some patternFound ->
-            match patternFound with
-            | _ when patternFound = patternFnet -> return! fnet url
-            | _ when patternFound = patternEnet -> return! enet url
-            | _ -> return Error $"erro na URL {url}"
+        if Regex.IsMatch(url, patternFnet) then
+            return! fnet url
+        elif Regex.IsMatch(url, patternEnet) then
+            return! enet url
+        else
+            return Error $"URL inválida '{url}'"
     }
 
 /// Returns the valid matching url (fnet or enet) for the given url, or Error if invalid
@@ -137,7 +133,7 @@ let getSourceUrl (url: string) : string =
     elif Regex.IsMatch(url, patternEnet) then url
     else url
 
-let downloadAndSaveFile folder filename url : Result<string, string> =
+let downloadAndSaveFileAsync folder filename url : Async<Result<string, string>> =
     async {
         let! bodyResult = getBody url
 
@@ -145,17 +141,16 @@ let downloadAndSaveFile folder filename url : Result<string, string> =
         | Error err -> return Error err
         | Ok body -> return! save folder filename body
     }
-    |> Async.RunSynchronously
 
 let filesListFilename = _outputDir +/ "files.lst"
 
 let saveFileList (filelist: List<string * string>) =
     let directory = Path.GetDirectoryName(filesListFilename)
 
-    if not (Directory.Exists(directory)) then
-        Directory.CreateDirectory(directory) |> ignore
-
     try
+        if not (Directory.Exists(directory)) then
+            Directory.CreateDirectory(directory) |> ignore
+
         let lines = filelist |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
 
         let fileMode =
@@ -168,8 +163,11 @@ let saveFileList (filelist: List<string * string>) =
         lines |> List.iter streamWriter.WriteLine
         streamWriter.Flush()
         fileStream.Flush(true)
-    with err ->
-        Log.error err.Message
+    with
+    | :? IOException as ex ->
+        Log.error $"Erro de I/O ao salvar a lista de arquivos em '{filesListFilename}': {ex.Message}"
+    | ex ->
+        Log.error $"Erro inesperado ao salvar a lista de arquivos: {ex.Message}"
 
 let readFile (filePath: string) : Option<List<string * string>> =
     try

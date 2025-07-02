@@ -8,30 +8,41 @@ let isDateFormat (input: string) =
     let pattern = @"^\d{4}-\d{2}-\d{2}$"
     Regex.IsMatch(input, pattern)
 
-let download folderName (d: Details.NewsDetail) : Option<string * string> =
-    match Download.downloadAndSaveFile (folderName d.filename) d.filename d.url with
-    | Ok filename ->
-        printfn "=> %s" filename
-        Some(d.ticker, filename)
-    | Error err ->
-        Log.error <| sprintf "x Erro (download): %s | %s" err d.filename
-        None
+let download folderName (d: Details.NewsDetail) : Async<Option<string * string>> =
+    async {
+        let! result = Download.downloadAndSaveFileAsync (folderName d.filename) d.filename d.url
+        match result with
+        | Ok filename ->
+            printfn "=> %s" filename
+            return Some(d.ticker, filename)
+        | Error err ->
+            Log.error <| sprintf "x Erro (download): %s | %s" err d.filename
+            return None
+    }
 
 let run codes d1 d2 =
-    let pe = Predicitions.setPrediction
-    let folderName = Predicitions.predictFolder pe
+    async {
+        let pe = Predicitions.setPrediction
+        let folderName = Predicitions.predictFolder pe
 
-    Log.notice <| sprintf "- Verificando fatos relevantes entre %s e %s:" d1 d2
-    Log.notice <| sprintf "  %A\n" codes
+        Log.notice <| sprintf "- Verificando fatos relevantes entre %s e %s:" d1 d2
+        Log.notice <| sprintf "  %A\n" codes
 
-    match Details.fetchNewsDetails codes d1 d2 with
-    | Ok details ->
-        details
-        |> List.map (download folderName)
-        |> List.choose id
-        |> Download.saveFileList
-        |> Ok
-    | Error e -> Error e
+        let! detailsResult = Details.fetchNewsDetailsAsync codes d1 d2
+        match detailsResult with
+        | Error e -> return Error e
+        | Ok details ->
+            let! downloadResults =
+                details
+                |> List.map (download folderName)
+                |> Async.Parallel
+            let successfulDownloads =
+                downloadResults
+                |> Array.choose id
+                |> Array.toList
+            Download.saveFileList successfulDownloads
+            return Ok ()
+    }
 
 let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> unit) indexFun =
     async {
@@ -52,36 +63,39 @@ let waitForKeyPressAsync (cts: CancellationTokenSource) (refreshFun: char -> uni
     }
 
 let listReports codes d1 d2 =
-    let HtmlEncode (s: string) = System.Web.HttpUtility.HtmlEncode(s)
+    async {
+        let HtmlEncode (s: string) = System.Web.HttpUtility.HtmlEncode(s)
 
-    use stream =
-        Assembly
-            .GetExecutingAssembly()
-            .GetManifestResourceStream("B3News.reports_template.html")
-    use reader = new StreamReader(stream)
-    let template = reader.ReadToEnd()
+        use stream =
+            Assembly
+                .GetExecutingAssembly()
+                .GetManifestResourceStream("B3News.reports_template.html")
+        use reader = new StreamReader(stream)
+        let template = reader.ReadToEnd()
 
-    match Details.fetchNewsDetails codes d1 d2 with
-    | Ok details ->
-        let htmlRows =
-            details
-            |> List.sortByDescending (fun d -> d.dateTime)
-            |> List.map (fun d ->
-                match List.tryParseReportFromFilename d.filename with
-                | Some report ->
-                    let aTag = Download.getHtmlLink d.url d.filename
-                    let bTag = Download.getHtmlLink d.url <| HtmlEncode(report.name.Replace('_', ' '))
-                    $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{bTag}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
-                | None ->
-                    let aTag = Download.getHtmlLink d.url d.filename
-                    $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
-            |> String.concat "\n"
-        let html = template.Replace("{rows}", htmlRows)
-        let outFile = "reports.html"
-        File.WriteAllText(outFile, html)
-        Log.notice $"Relatório salvo em {outFile}"
-        Ok outFile
-    | Error e -> Error e
+        let! detailsResult = Details.fetchNewsDetailsAsync codes d1 d2
+        return
+            detailsResult
+            |> Result.map (fun details ->
+                let htmlRows =
+                    details
+                    |> List.sortByDescending (fun d -> d.dateTime)
+                    |> List.map (fun d ->
+                        match List.tryParseReportFromFilename d.filename with
+                        | Some report ->
+                            let aTag = Download.getHtmlLink d.url d.filename
+                            let bTag = Download.getHtmlLink d.url <| HtmlEncode(report.name.Replace('_', ' '))
+                            $"<tr><td><b>{HtmlEncode(d.ticker)}</b></td><td>{bTag}</td><td>{HtmlEncode(d.dateTime.Substring(0, 16))}</td><td>{aTag}</td></tr>"
+                        | None ->
+                            let aTag = Download.getHtmlLink d.url d.filename
+                            $"<tr><td colspan='3'>{HtmlEncode(d.filename)}</td><td>{aTag}</td></tr>")
+                    |> String.concat "\n"
+                let html = template.Replace("{rows}", htmlRows)
+                let outFile = "reports.html"
+                File.WriteAllText(outFile, html)
+                Log.notice $"Relatório salvo em {outFile}"
+                outFile)
+    }
 
 let serverUsage () =
     "'0'-'9' - recarrega arquivos desde 'n' dias atrás\n'i' - recria index.html\n'q' - sai do servidor\n"
@@ -164,11 +178,13 @@ and updateFiles command args =
         else
             Config.readTickersFromFile ()
 
-    match run codes d1 d2 with
-    | Ok _ -> createIndex ()
-    | Error err ->
-        Log.error <| sprintf "x Erro (updateFiles): %s" err
-        1
+    run codes d1 d2
+    |> Async.RunSynchronously
+    |> function
+        | Ok _ -> createIndex ()
+        | Error err ->
+            Log.error <| sprintf "x Erro (updateFiles): %s" err
+            1
 
 and reportsFile (args: string array) =
     if args.Length < 3 then
@@ -184,11 +200,13 @@ and reportsFile (args: string array) =
     let codes = Array.skip 2 args |> Array.toList
     printfn "- Listando relatórios entre %s e %s:" d1 d2
     printfn "  %A\n" codes
-    match listReports codes d1 d2 with
-    | Ok _ -> 0
-    | Error err ->
-        Log.error <| sprintf "x Erro (list): %s" err
-        1
+    listReports codes d1 d2
+    |> Async.RunSynchronously
+    |> function
+        | Ok _ -> 0
+        | Error err ->
+            Log.error <| sprintf "x Erro (list): %s" err
+            1
 
 and updateJson (args: string array) =
     let d1 =
@@ -203,16 +221,17 @@ and updateJson (args: string array) =
             DateTime.Today.ToString("yyyy-MM-dd")
     if not (isDateFormat d1) || not (isDateFormat d2) then
         usage ()
-    // let codes = Array.skip 2 args |> Array.toList
     let codes = Config.readTickersFromFile ()
     printfn "- Atualizando relatórios entre %s e %s:" d1 d2
     printfn "  %A\n" codes
-    match JsonStore.updateNews codes d1 d2 with
+
+    let updateTask = JsonStore.updateNewsCust Config.reportsJson codes d1 d2
+    match Async.RunSynchronously updateTask with
     | Ok num ->
         Log.notice <| sprintf "- %d relatórios adicionados." num
         0
     | Error err ->
-        Log.error <| sprintf "x Erro (list): %s" err
+        Log.error <| sprintf "x Erro (updateJson): %s" err
         1
 
 and runServer () =

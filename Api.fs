@@ -1,5 +1,7 @@
 module Api
 
+open System
+open System.IO
 open System.Text.Json
 open Microsoft.AspNetCore.Http
 open System.Net
@@ -9,6 +11,8 @@ open Microsoft.Extensions.Hosting
 open System.Net.Http
 open System.Threading.Tasks
 open Microsoft.Extensions.Configuration
+open Microsoft.Extensions.Caching.Memory
+open Microsoft.Extensions.FileProviders
 
 type QueryParams =
     { Codes: string list
@@ -133,37 +137,41 @@ let handleLoadPagedNews (ctx: HttpContext) : Task =
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
 
-// Hold the last modified time of the reports.json file
-let mutable _lastModified = System.DateTime.MinValue
-let mutable _lastCount = 0
-
-// Check if the file Config.reportsJson has changed since last check
-let handleNumberOfReports (ctx: HttpContext) : Task =
+let handleNumberOfReports (ctx: HttpContext) (cache: IMemoryCache) : Task =
     task {
         try
-            if System.IO.File.Exists(Config.reportsJson) then
-                let lastModified = System.IO.File.GetLastWriteTimeUtc(Config.reportsJson)
-                if lastModified > _lastModified || _lastModified <> System.DateTime.MinValue then
-                    _lastModified <- lastModified
-
-                    let p = parseQuery ctx.Request.Query
-                    let c =
-                        DetailsQuery.newCriteria ()
-                        |> DetailsQuery.withTickers p.Codes
-                        |> DetailsQuery.withDateRange (fst p.Dates) (snd p.Dates)
-                        |> DetailsQuery.withFilename p.Filename
-                        |> DetailsQuery.withReportType p.ReportType
-                        |> DetailsQuery.withPagination 1 9999999
-
-                    match JsonStore.loadPagedNewsWithCriteria Config.reportsJson c with
-                    | Error err -> do! writeErrorResponse ctx HttpStatusCode.BadRequest err
-                    | Ok r ->
-                        _lastCount <- r.Items.Length
-                        do! writeJsonResponse ctx HttpStatusCode.OK {| totalRecords = r.Items.Length |}
-                else
-                    do! writeJsonResponse ctx HttpStatusCode.OK {| totalRecords = _lastCount |}
-            else
+            if not <| File.Exists(Config.reportsJson) then
                 do! writeErrorResponse ctx HttpStatusCode.NotFound "reports.json not found"
+            else
+                let p = parseQuery ctx.Request.Query
+                // Create a cache key based on the query parameters
+                let cacheKey = sprintf "count-%A-%A-%s-%s" p.Codes p.Dates p.Filename p.ReportType
+
+                let! count =
+                    cache.GetOrCreateAsync(
+                        cacheKey,
+                        (fun (entry: ICacheEntry) ->
+                            task {
+                                let fileProvider = new PhysicalFileProvider(Directory.GetCurrentDirectory())
+                                entry.AddExpirationToken(fileProvider.Watch Config.reportsJson) |> ignore
+                                entry.SetSlidingExpiration(TimeSpan.FromMinutes 10) |> ignore
+
+                                let criteria =
+                                    DetailsQuery.newCriteria ()
+                                    |> DetailsQuery.withTickers p.Codes
+                                    |> DetailsQuery.withDateRange (fst p.Dates) (snd p.Dates)
+                                    |> DetailsQuery.withFilename p.Filename
+                                    |> DetailsQuery.withReportType p.ReportType
+                                    |> DetailsQuery.withPagination 1 9999999 // Get all records for counting
+
+                                match JsonStore.loadPagedNewsWithCriteria Config.reportsJson criteria with
+                                | Ok r -> return r.TotalRecords
+                                | Error _ -> return 0 // On error, return 0, cache will expire shortly
+                            })
+                    )
+                    |> Async.AwaitTask
+
+                do! writeJsonResponse ctx HttpStatusCode.OK {| totalRecords = count |}
         with ex ->
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
@@ -236,6 +244,7 @@ let startApiServer (args: string array) =
 
     // Add services
     builder.Services.AddControllers() |> ignore
+    builder.Services.AddMemoryCache() |> ignore
 
     let app = builder.Build()
 
@@ -243,11 +252,14 @@ let startApiServer (args: string array) =
     if app.Environment.IsDevelopment() then
         app.UseDeveloperExceptionPage() |> ignore
 
+    let memoryCache = app.Services.GetRequiredService<IMemoryCache>()
+
     // Custom route for /pdf/{id}
     app.MapGet("/pdf/{id}", handlePdfRequest) |> ignore
 
     // Route for /status/count
-    app.MapGet("/api/news/count", handleNumberOfReports) |> ignore
+    app.MapGet("/api/news/count", (fun (ctx: HttpContext) -> handleNumberOfReports ctx memoryCache))
+    |> ignore
 
     // Route your handler directly
     app.MapGet("/api/news", handleLoadPagedNews) |> ignore
