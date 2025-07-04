@@ -26,7 +26,7 @@ type QueryParams =
       ClientRecordCount: int option
       UpdateRecords: bool }
 
-let private parseQuery (query: IQueryCollection) =
+let parseQuery (query: IQueryCollection) =
     let getStringValue key defaultValue =
         if query.ContainsKey(key) then
             query.[key].ToString()
@@ -81,7 +81,7 @@ let private parseQuery (query: IQueryCollection) =
         match getStringValue "date" "" with
         | "" -> "", ""
         | s ->
-            s.Split('-')
+            s.Split([| " - " |], StringSplitOptions.None)
             |> fun arr -> arr.[0].Trim(), (if arr.Length > 1 then arr.[1].Trim() else arr.[0].Trim())
 
       Filename = getStringValue "filename" ""

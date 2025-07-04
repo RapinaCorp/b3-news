@@ -12,7 +12,8 @@ open Lib
 open News
 
 type NewsDetail =
-    { ticker: string
+    { id: int
+      ticker: string
       dateTime: string
       filename: string
       reportType: string
@@ -136,7 +137,8 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
                 let! url = getURLAsync details
                 return
                     Ok(
-                        { ticker = nwsmsg.ticker |> Option.defaultValue ""
+                        { id = nwsmsg.id
+                          ticker = nwsmsg.ticker |> Option.defaultValue ""
                           dateTime = ndateTime
                           filename = filename
                           reportType =
