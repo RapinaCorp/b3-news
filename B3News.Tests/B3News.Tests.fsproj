@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <RootNamespace>B3News.Tests</RootNamespace>
     <TargetFramework>net8.0</TargetFramework>
 
     <IsPackable>false</IsPackable>
@@ -11,6 +12,7 @@
   <ItemGroup>
     <Compile Include="DetailsQueryTests.fs" />
     <Compile Include="ApiTests.fs" />
+    <Compile Include="IntegrationTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
