@@ -293,9 +293,9 @@
                         pageSize: elements.itemsPerPageSelect.value || constants.DEFAULT_PAGE_SIZE,
                         sortBy: state.sort.column,
                         sortDirection: state.sort.direction,
-                        clientRecordCount: state.config.localRecordCount,
                         updateRecords: updateRecords,
                     });
+                    if (!updateRecords) params.append("clientRecordCount", state.config.localRecordCount);
                     appendFilterParams(params);
 
                     const apiUrl = `${constants.API_BASE_URL}?${params.toString()}`;
