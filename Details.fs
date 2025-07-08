@@ -112,7 +112,7 @@ let fetchDetails (newsID: string) (agency: string) (dt: string) =
 let getURLAsync (resp: HttpResponseMessage) : Async<string> =
     async {
         let! txt = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
-        let regexPattern = "(http[s]*://[^\\?]+\\?[Ii][Dd]=[0-9]+)"
+        let regexPattern = "(http[s]*://[^\\?]+\\?([Nn][Ss][Dd]|[Ii][Dd])=[0-9]+)"
         let matchResult = Regex.Match(txt, regexPattern)
         return matchResult.Value
     }

@@ -15,6 +15,8 @@ let patternFnet =
 let patternEnet =
     "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
 
+let patternEnetNbc = "(https://www.rad.cvm.gov.br/ENET/frmNBC.aspx\\?NSD=[0-9]+)"
+
 /// Custom operator for combining paths
 let (+/) path1 path2 = Path.Combine(path1, path2)
 
@@ -118,12 +120,9 @@ let save (folder: string) (filename: string) (body: string) : Async<Result<strin
 
 let getBody (url: string) =
     async {
-        if Regex.IsMatch(url, patternFnet) then
-            return! fnet url
-        elif Regex.IsMatch(url, patternEnet) then
-            return! enet url
-        else
-            return Error $"URL inválida '{url}'"
+        if Regex.IsMatch(url, patternFnet) then return! fnet url
+        elif Regex.IsMatch(url, patternEnet) then return! enet url
+        else return Error $"URL inválida '{url}'"
     }
 
 /// Returns the valid matching url (fnet or enet) for the given url, or Error if invalid
@@ -166,8 +165,7 @@ let saveFileList (filelist: List<string * string>) =
     with
     | :? IOException as ex ->
         Log.error $"Erro de I/O ao salvar a lista de arquivos em '{filesListFilename}': {ex.Message}"
-    | ex ->
-        Log.error $"Erro inesperado ao salvar a lista de arquivos: {ex.Message}"
+    | ex -> Log.error $"Erro inesperado ao salvar a lista de arquivos: {ex.Message}"
 
 let readFile (filePath: string) : Option<List<string * string>> =
     try
@@ -208,5 +206,7 @@ let getRealUrl (url: string) : string =
     elif Regex.IsMatch(url, patternEnet) then
         let nid = Regex.Match(url, patternEnet).Groups.[1].Value
         $"/pdf/{nid}"
+    elif Regex.IsMatch(url, patternEnetNbc) then
+        Regex.Match(url, patternEnetNbc).Value
     else
         url
