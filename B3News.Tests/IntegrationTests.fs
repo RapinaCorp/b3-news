@@ -137,8 +137,33 @@ let ``Simulate pagination and data update flow`` () =
             (sprintf "[Step 4] Expected 7 total records after update, got %d" serverRecordCount)
         )
 
-        // --- 5. Client Fetches Updated Data ---
-        // Step 5: Client fetches first page again with updateRecords=true. Should see 7 total records, 3 pages.
+        // --- 5. Client Navigates through Pages and Should not receveive new data ---
+        // Step 5: Client paginates to page 3 (after backend update, but without requesting updated records).
+        // Should receive items 6-4 (based on previous client state), totalRecords should remain unchanged.
+        // Uses: page=1, pageSize=3, sortBy=dateTime, sortDirection=desc, updateRecords=false.
+        let resp5 =
+            client
+                .GetAsync(
+                    $"/api/news?pageSize=3&page=1&sortBy=dateTime&sortDirection=desc&updateRecords=false&clientRecordCount={localRecordCount}"
+                )
+                .Result
+        Assert.True((resp5.IsSuccessStatusCode), "[Step 5] Pagination after backend update should succeed.")
+        let data5 =
+            JsonSerializer.Deserialize<NewsApiResponse>(resp5.Content.ReadAsStringAsync().Result)
+        // Since clientRecordCount is still 5, server should paginate based on old data
+        Assert.True(
+            (data5.totalRecords = 5),
+            (sprintf "[Step 5] Expected 5 total records (client unaware of update), got %d" data5.totalRecords)
+        )
+        Assert.True(
+            (data5.news.[0].id = 5 && data5.news.[1].id = 4 && data5.news.[2].id = 3),
+            sprintf
+                "[Step 5] Expected ids [5;4;3] on first page after backend update, got [%A]"
+                (data5.news |> List.map (fun n -> n.id))
+        )
+
+        // --- 6. Client Fetches Updated Data ---
+        // Step 6: Client fetches first page again with updateRecords=true. Should see 7 total records, 3 pages.
         let resp3 = client.GetAsync("/api/news?pageSize=3&page=1&updateRecords=true").Result
         Assert.True((resp3.IsSuccessStatusCode), "[Step 5] Update request should succeed.")
         let data3 =
@@ -153,8 +178,8 @@ let ``Simulate pagination and data update flow`` () =
         )
         localRecordCount <- data3.totalRecords // Client updates its count
 
-        // --- 6. Final Pagination Check ---
-        // Step 6: Client paginates to last page. Should see only 1 item, with id 7.
+        // --- 7. Final Pagination Check ---
+        // Step 7: Client paginates to last page. Should see only 1 item, with id 7.
         let resp4 =
             client
                 .GetAsync($"/api/news?pageSize=3&page=3&clientRecordCount={localRecordCount}")
