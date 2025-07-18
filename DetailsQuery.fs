@@ -118,10 +118,22 @@ let filterByFilename (filename: string) =
         && x.filename.ToLowerInvariant().Contains(target)
 
 let filterByReportType (reportType: string) =
-    let target = reportType.ToLowerInvariant()
+    let allTargets =
+        reportType
+            .ToLowerInvariant()
+            .Split([| ','; ';' |], StringSplitOptions.RemoveEmptyEntries ||| StringSplitOptions.TrimEntries)
+
+    let includeTargets, excludeTargets =
+        allTargets |> Array.partition (fun t -> not (t.StartsWith("-")))
+    let excludeTargets = excludeTargets |> Array.map (fun t -> t.Substring(1))
+
     fun (x: NewsDetail) ->
         not (String.IsNullOrEmpty x.reportType)
-        && x.reportType.ToLowerInvariant().Contains(target)
+        && let lowerReportType = x.reportType.ToLowerInvariant() in
+
+           (Array.isEmpty includeTargets
+            || Array.exists (lowerReportType.Contains: string -> bool) includeTargets)
+           && not (Array.exists (lowerReportType.Contains: string -> bool) excludeTargets)
 
 // Safe pagination
 let paginate (pageSize: int) (page: int) (items: 'a list) : PagedResult<'a> =
