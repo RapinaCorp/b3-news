@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Empresas e FIIs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 10px;
+        }
+
+        #app {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin: 0 auto;
+            max-width: 800px;
+        }
+
+        header {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #333;
+            margin: 0;
+        }
+
+        #config-area {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        #config-area label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        #config-area input {
+            width: calc(100% - 10px);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        #config-area button {
+            background-color: #007bff;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #config-area button:hover {
+            background-color: #0056b3;
+        }
+
+        #loading-indicator {
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
+            color: #007bff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f9f9f9;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        th input {
+            width: calc(100% - 12px);
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        #pagination-controls {
+            text-align: center;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+
+        #pagination-controls button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            margin: 0 2px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        #pagination-controls button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        #pagination-controls button:disabled {
+            cursor: not-allowed;
+            color: #aaa;
+        }
+
+        .hide {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app">
+        <header>
+            <h1>Relatórios de Empresas e FIIs</h1>
+        </header>
+
+        <div id="config-area" class="hide">
+            <label for="ticker-filter">Códigos de Ticker (separados por vírgula):</label>
+            <input type="text" id="ticker-filter">
+            <button id="save-reload-btn">Salvar e Recarregar</button>
+        </div>
+
+        <div id="loading-indicator">Buscando dados...</div>
+
+        <div style="overflow-x:auto;">
+            <table id="report-table">
+                <thead>
+                    <tr>
+                        <th data-sort-by="code">Empresa <span id="codeSortIcon"></span></th>
+                        <th data-sort-by="type">Tipo de Relatório <span id="typeSortIcon"></span></th>
+                        <th data-sort-by="dateTime">Data & Hora <span id="dateTimeSortIcon"></span></th>
+                    </tr>
+                    <tr id="filter-row">
+                        <th><input type="search" id="filter-input-0" placeholder="Filtrar Empresa..."></th>
+                        <th><input type="search" id="filter-input-1" placeholder="Filtrar Tipo..."></th>
+                        <th><input type="search" id="filter-input-2" placeholder="Filtrar Data (DD/MM/YYYY)..."></th>
+                    </tr>
+                </thead>
+                <tbody id="report-table-body">
+                </tbody>
+            </table>
+        </div>
+
+        <div id="pagination-controls"></div>
+    </div>
+
+    <script>
+        // =================================================================================
+        // SCRIPT START - LEGACY BROWSER COMPATIBLE (ES5)
+        // =================================================================================
+        document.addEventListener('DOMContentLoaded', function () {
+
+            // --- CONSTANTS ---
+            var constants = {
+                API_BASE_URL: '/api/news',
+                DEBOUNCE_DELAY: 600,
+                LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy'
+            };
+
+            // --- STATE MANAGEMENT ---
+            var state = {
+                reports: [],
+                currentPage: 1,
+                totalPagesFromServer: 0,
+                totalRecords: 0,
+                sort: {
+                    column: 'dateTime',
+                    direction: 'desc'
+                },
+                filter: {
+                    code: '',
+                    type: '',
+                    date: ''
+                },
+                config: {
+                    ticker: ''
+                }
+            };
+
+            // --- DOM ELEMENT REFERENCES ---
+            var elements = {
+                tableBody: document.getElementById('report-table-body'),
+                loadingIndicator: document.getElementById('loading-indicator'),
+                paginationControls: document.getElementById('pagination-controls'),
+                tickerInput: document.getElementById('ticker-filter'),
+                saveReloadBtn: document.getElementById('save-reload-btn'),
+                tableHeader: document.querySelector('#report-table thead')
+            };
+
+            // --- UTILITY FUNCTIONS ---
+            function debounce(fn, delay) {
+                var timeout;
+                return function () {
+                    var context = this;
+                    var args = arguments;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(function () {
+                        fn.apply(context, args);
+                    }, delay);
+                };
+            }
+
+            function formatDate(dateString) {
+                var date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString.substring(0, 10);
+
+                function pad(num) {
+                    return num < 10 ? '0' + num : num;
+                }
+
+                var day = pad(date.getDate());
+                var month = pad(date.getMonth() + 1);
+                var year = date.getFullYear();
+                // var hours = pad(date.getHours());
+                // var minutes = pad(date.getMinutes());
+
+                return day + '/' + month + '/' + year; // + ' ' + hours + ':' + minutes;
+            }
+
+            // --- API & DATA HANDLING ---
+            function createApiUrl(updateRecords) {
+                var params = 'page=' + state.currentPage +
+                    '&pageSize=20' +
+                    '&sortBy=' + state.sort.column +
+                    '&sortDirection=' + state.sort.direction +
+                    '&updateRecords=' + (updateRecords || false);
+
+                var codes = state.filter.code ? state.filter.code.trim().toUpperCase() : state.config.ticker.split(',').map(function (t) { return t.trim(); }).filter(Boolean).join(',');
+                if (codes) params += '&codes=' + encodeURIComponent(codes);
+                if (state.filter.type) params += '&reportType=' + encodeURIComponent(state.filter.type);
+                if (state.filter.date) params += '&date=' + encodeURIComponent(state.filter.date);
+
+                return constants.API_BASE_URL + '?' + params;
+            }
+
+            function fetchData(updateRecords) {
+                showLoading();
+
+                var xhr = new XMLHttpRequest();
+                var apiUrl = createApiUrl(updateRecords);
+                console.log("Fetching from:", apiUrl);
+
+                xhr.open('GET', apiUrl, true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            var data = JSON.parse(xhr.responseText);
+                            state.reports = data.news || [];
+                            state.totalPagesFromServer = data.totalPages || 0;
+                            state.totalRecords = data.totalRecords || 0;
+                        } else {
+                            console.error('Error fetching data. Status:', xhr.status);
+                            elements.tableBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:red;">Falha ao carregar dados.</td></tr>';
+                            state.reports = [];
+                            state.totalPagesFromServer = 0;
+                        }
+                        renderTable();
+                        renderPaginationControls();
+                        hideLoading();
+                        window.scrollTo(0, 0);
+                    }
+                };
+                xhr.send();
+            }
+
+            // --- UI RENDERING & MANIPULATION ---
+            function showLoading() {
+                elements.loadingIndicator.style.display = 'block';
+                elements.tableBody.style.display = 'none';
+            }
+
+            function hideLoading() {
+                elements.loadingIndicator.style.display = 'none';
+                elements.tableBody.style.display = 'table-row-group';
+            }
+
+            function renderTable() {
+                elements.tableBody.innerHTML = '';
+                if (state.reports.length === 0) {
+                    var message = state.totalRecords > 0 ? "Nenhum relatório para esta página." : "Nenhum relatório encontrado com seus critérios.";
+                    var row = elements.tableBody.insertRow();
+                    var cell = row.insertCell();
+                    cell.colSpan = 3;
+                    cell.style.textAlign = 'center';
+                    cell.style.padding = '20px';
+                    cell.textContent = message;
+                    return;
+                }
+
+                for (var i = 0; i < state.reports.length; i++) {
+                    var report = state.reports[i];
+                    var row = document.createElement('tr');
+
+                    var tickerCell = document.createElement('td');
+                    tickerCell.textContent = report.ticker || 'N/A';
+                    row.appendChild(tickerCell);
+
+                    var typeCell = document.createElement('td');
+                    var typeLink = document.createElement('a');
+                    typeLink.href = report.url;
+                    typeLink.target = '_blank';
+                    typeLink.textContent = report.reportType || 'N/A';
+                    typeCell.appendChild(typeLink);
+                    row.appendChild(typeCell);
+
+                    var dateCell = document.createElement('td');
+                    dateCell.textContent = formatDate(report.dateTime);
+                    row.appendChild(dateCell);
+
+                    elements.tableBody.appendChild(row);
+                }
+            }
+
+            function renderPaginationControls() {
+                elements.paginationControls.innerHTML = '';
+                var totalPages = state.totalPagesFromServer;
+                if (totalPages <= 1) return;
+
+                var createButton = function (text, pageNum, isDisabled, isActive) {
+                    var button = document.createElement('button');
+                    button.textContent = text;
+                    if (isActive) button.className = 'active';
+                    button.disabled = isDisabled;
+
+                    if (!isDisabled) {
+                        button.onclick = function () {
+                            goToPage(pageNum);
+                        };
+                    }
+                    return button;
+                };
+
+                elements.paginationControls.appendChild(createButton('Anterior', state.currentPage - 1, state.currentPage === 1, false));
+
+                var maxPagesToShow = 5;
+                if (totalPages > maxPagesToShow) {
+                    var startPage = Math.max(1, state.currentPage - 2);
+                    var endPage = Math.min(totalPages, state.currentPage + 2);
+
+                    if (state.currentPage < 4) {
+                        startPage = 1;
+                        endPage = maxPagesToShow;
+                    } else if (state.currentPage > totalPages - 3) {
+                        startPage = totalPages - maxPagesToShow + 1;
+                        endPage = totalPages;
+                    }
+
+                    if (startPage > 1) {
+                        elements.paginationControls.appendChild(createButton('1', 1, false, state.currentPage === 1));
+                        if (startPage > 2) elements.paginationControls.appendChild(createButton('...', null, true, false));
+                    }
+
+                    for (var i = startPage; i <= endPage; i++) {
+                        elements.paginationControls.appendChild(createButton(String(i), i, false, i === state.currentPage));
+                    }
+
+                    if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) elements.paginationControls.appendChild(createButton('...', null, true, false));
+                        elements.paginationControls.appendChild(createButton(String(totalPages), totalPages, false, state.currentPage === totalPages));
+                    }
+                } else {
+                    for (var i = 1; i <= totalPages; i++) {
+                        elements.paginationControls.appendChild(createButton(String(i), i, false, i === state.currentPage));
+                    }
+                }
+
+                elements.paginationControls.appendChild(createButton('Próxima', state.currentPage + 1, state.currentPage === totalPages, false));
+            }
+
+            function updateSortIcons() {
+                var icons = document.querySelectorAll('th[data-sort-by] span');
+                for (var i = 0; i < icons.length; i++) {
+                    icons[i].textContent = '';
+                }
+                var iconSpan = document.getElementById(state.sort.column + 'SortIcon');
+                if (iconSpan) {
+                    iconSpan.textContent = state.sort.direction === 'asc' ? ' ▲' : ' ▼';
+                }
+            }
+
+            // --- CONFIG MANAGEMENT ---
+            function saveConfig() {
+                state.config.ticker = elements.tickerInput.value.trim();
+                try {
+                    localStorage.setItem(constants.LOCAL_STORAGE_KEY, JSON.stringify(state.config));
+                } catch (e) {
+                    console.error("Failed to save config to localStorage", e);
+                }
+            }
+
+            function loadConfig() {
+                try {
+                    var saved = localStorage.getItem(constants.LOCAL_STORAGE_KEY);
+                    if (saved) {
+                        var parsed = JSON.parse(saved);
+                        if (parsed && typeof parsed === 'object') {
+                            state.config.ticker = parsed.ticker || '';
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load config from localStorage", e);
+                }
+                elements.tickerInput.value = state.config.ticker;
+            }
+
+            // --- EVENT HANDLERS ---
+            var handleFilterChange = debounce(function () {
+                var code = document.getElementById('filter-input-0').value.toUpperCase();
+
+                state.filter.code = code;
+                state.filter.type = document.getElementById('filter-input-1').value.toUpperCase();
+                state.filter.date = document.getElementById('filter-input-2').value;
+
+                state.currentPage = 1;
+                fetchData(true);
+            }, constants.DEBOUNCE_DELAY);
+
+
+            function goToPage(pageNum) {
+                if (pageNum >= 1 && pageNum <= state.totalPagesFromServer) {
+                    state.currentPage = pageNum;
+                    fetchData();
+                }
+            }
+
+            function handleSort(column) {
+                if (state.sort.column === column) {
+                    state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    state.sort.column = column;
+                    state.sort.direction = 'asc';
+                }
+                state.currentPage = 1;
+                updateSortIcons();
+                fetchData();
+            }
+
+            // --- INITIALIZATION ---
+            function init() {
+                loadConfig();
+                updateSortIcons();
+                fetchData(true);
+
+                elements.saveReloadBtn.addEventListener('click', function () {
+                    saveConfig();
+                    state.currentPage = 1;
+                    fetchData(true);
+                });
+
+                var headers = elements.tableHeader.querySelectorAll('th[data-sort-by]');
+                for (var i = 0; i < headers.length; i++) {
+                    (function (header) {
+                        header.addEventListener('click', function () {
+                            var sortBy = header.getAttribute('data-sort-by');
+                            if (sortBy) handleSort(sortBy);
+                        });
+                    })(headers[i]);
+                }
+
+                document.getElementById('filter-input-0').addEventListener('input', handleFilterChange);
+                document.getElementById('filter-input-1').addEventListener('input', handleFilterChange);
+                document.getElementById('filter-input-2').addEventListener('input', handleFilterChange);
+            }
+
+            init();
+        });
+        // =================================================================================
+        // SCRIPT END
+        // =================================================================================
+    </script>
+</body>
+
+</html>

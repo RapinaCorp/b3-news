@@ -10,6 +10,7 @@ report/*
 !index_template.html
 !reports_template.html
 !report_viewer.html
+!report_viewer_legacy.html
 !testdata.txt
 !traindata.txt
 

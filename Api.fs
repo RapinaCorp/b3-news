@@ -245,10 +245,9 @@ let handlePdfRequest (ctx: HttpContext) : Task =
                 do! ctx.Response.WriteAsync("Failed to fetch PDF from remote server.")
     }
 
-let handleIndexHtml (ctx: HttpContext) =
+let handleHtmlFile (ctx: HttpContext) (filePath: string) =
     async {
         try
-            let filePath = "report_viewer.html"
             if System.IO.File.Exists(filePath) then
                 ctx.Response.StatusCode <- 200
                 ctx.Response.ContentType <- "text/html; charset=utf-8"
@@ -256,7 +255,7 @@ let handleIndexHtml (ctx: HttpContext) =
                 do! ctx.Response.WriteAsync(html) |> Async.AwaitTask
             else
                 ctx.Response.StatusCode <- 404
-                do! ctx.Response.WriteAsync("index.html not found") |> Async.AwaitTask
+                do! ctx.Response.WriteAsync($"""{filePath} not found""") |> Async.AwaitTask
         with ex ->
             ctx.Response.StatusCode <- 500
             do!
@@ -290,8 +289,18 @@ let startApiServer (args: string array) =
     // Route your handler directly
     app.MapGet("/api/news", handleLoadPagedNews) |> ignore
 
-    // Map the root route to serve index.html
-    app.MapGet("/", (fun (ctx: HttpContext) -> handleIndexHtml ctx |> Async.StartAsTask :> System.Threading.Tasks.Task))
+    app.MapGet(
+        "/",
+        (fun (ctx: HttpContext) ->
+            handleHtmlFile ctx "report_viewer.html" |> Async.StartAsTask :> System.Threading.Tasks.Task)
+    )
+    |> ignore
+
+    app.MapGet(
+        "/legacy",
+        (fun (ctx: HttpContext) ->
+            handleHtmlFile ctx "report_viewer_legacy.html" |> Async.StartAsTask :> System.Threading.Tasks.Task)
+    )
     |> ignore
 
     app.Run()
