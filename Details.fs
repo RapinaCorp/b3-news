@@ -117,6 +117,24 @@ let getURLAsync (resp: HttpResponseMessage) : Async<string> =
         return matchResult.Value
     }
 
+// https://regex101.com/r/ZRyXRd/3
+let getReportTitle (title: string) : string =
+    let regex =
+        Regex(
+            @"\)\s*(?:\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2} )?(?:- )?(.*?)(?= - [\d :/]+|\s\(.+\)|$)(?: - [\d :/]+)?(?: (\(.\)))?"
+        )
+    let matchResult = regex.Match(title)
+    if matchResult.Success then
+        let mainTitle = matchResult.Groups.[1].Value.Trim()
+        let suffix =
+            if matchResult.Groups.[2].Success then
+                " " + matchResult.Groups.[2].Value.Trim()
+            else
+                ""
+        mainTitle + suffix
+    else
+        title.Trim()
+
 let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>> =
     async {
         let nid = string (nwsmsg.id)
@@ -141,10 +159,7 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
                           ticker = nwsmsg.ticker |> Option.defaultValue ""
                           dateTime = ndateTime
                           filename = filename
-                          reportType =
-                            match List.tryParseReportFromFilename filename with
-                            | Some r -> r.name
-                            | None -> ""
+                          reportType = getReportTitle nwsmsg.headline
                           url = url }
                     )
     }
