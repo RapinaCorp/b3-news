@@ -137,7 +137,7 @@ let handleLoadPagedNews (ctx: HttpContext) : Task =
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
 
-let handleNumberOfReports (ctx: HttpContext) (cache: IMemoryCache) : Task =
+let handleNumberOfReports (cache: IMemoryCache) (ctx: HttpContext) : Task =
     task {
         try
             if not <| File.Exists(Config.reportsJson) then
@@ -245,63 +245,44 @@ let handlePdfRequest (ctx: HttpContext) : Task =
                 do! ctx.Response.WriteAsync("Failed to fetch PDF from remote server.")
     }
 
-let handleHtmlFile (ctx: HttpContext) (filePath: string) =
-    async {
+let handleHtmlFile (filePath: string) (ctx: HttpContext) : Task =
+    task {
         try
             if System.IO.File.Exists(filePath) then
                 ctx.Response.StatusCode <- 200
                 ctx.Response.ContentType <- "text/html; charset=utf-8"
-                let! html = System.IO.File.ReadAllTextAsync(filePath) |> Async.AwaitTask
-                do! ctx.Response.WriteAsync(html) |> Async.AwaitTask
+                let! html = System.IO.File.ReadAllTextAsync(filePath)
+                do! ctx.Response.WriteAsync(html)
             else
                 ctx.Response.StatusCode <- 404
-                do! ctx.Response.WriteAsync($"""{filePath} not found""") |> Async.AwaitTask
+                do! ctx.Response.WriteAsync($"""{filePath} not found""")
         with ex ->
             ctx.Response.StatusCode <- 500
-            do!
-                ctx.Response.WriteAsync($"Internal server error: {ex.Message}")
-                |> Async.AwaitTask
+            do! ctx.Response.WriteAsync($"Internal server error: {ex.Message}")
     }
+
+let configureRoutes (app: WebApplication) memoryCache =
+    do
+        app.MapGet("/pdf/{id}.pdf", handlePdfRequest) |> ignore
+        app.MapGet("/api/news/count", handleNumberOfReports memoryCache) |> ignore
+        app.MapGet("/api/news", handleLoadPagedNews) |> ignore
+        app.MapGet("/legacy", handleHtmlFile "report_viewer_legacy.html") |> ignore
+        app.MapGet("/", handleHtmlFile "report_viewer.html") |> ignore
 
 let startApiServer (args: string array) =
     let builder = WebApplication.CreateBuilder args
-    builder.Configuration.AddJsonFile Config.configFileName |> ignore
-
-    // Add services
-    builder.Services.AddControllers() |> ignore
-    builder.Services.AddMemoryCache() |> ignore
+    do builder.Configuration.AddJsonFile Config.configFileName |> ignore
+    do builder.Services.AddControllers() |> ignore
+    do builder.Services.AddMemoryCache() |> ignore
 
     let app = builder.Build()
 
-    // Configure middleware
-    if app.Environment.IsDevelopment() then
-        app.UseDeveloperExceptionPage() |> ignore
+    do
+        if app.Environment.IsDevelopment() then
+            app.UseDeveloperExceptionPage() |> ignore
 
     let memoryCache = app.Services.GetRequiredService<IMemoryCache>()
+    do configureRoutes app memoryCache
 
-    // Custom route for /pdf/{id}.pdf
-    app.MapGet("/pdf/{id}.pdf", handlePdfRequest) |> ignore
-
-    // Route for /status/count
-    app.MapGet("/api/news/count", (fun (ctx: HttpContext) -> handleNumberOfReports ctx memoryCache))
-    |> ignore
-
-    // Route your handler directly
-    app.MapGet("/api/news", handleLoadPagedNews) |> ignore
-
-    app.MapGet(
-        "/",
-        (fun (ctx: HttpContext) ->
-            handleHtmlFile ctx "report_viewer.html" |> Async.StartAsTask :> System.Threading.Tasks.Task)
-    )
-    |> ignore
-
-    app.MapGet(
-        "/legacy",
-        (fun (ctx: HttpContext) ->
-            handleHtmlFile ctx "report_viewer_legacy.html" |> Async.StartAsTask :> System.Threading.Tasks.Task)
-    )
-    |> ignore
-
-    app.Run()
+    do app.Run()
     0
