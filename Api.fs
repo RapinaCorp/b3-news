@@ -154,7 +154,7 @@ let handleNumberOfReports (cache: IMemoryCache) (ctx: HttpContext) : Task =
                             task {
                                 let fileProvider = new PhysicalFileProvider(Directory.GetCurrentDirectory())
                                 entry.AddExpirationToken(fileProvider.Watch Config.reportsJson) |> ignore
-                                entry.SetSlidingExpiration(TimeSpan.FromMinutes 10) |> ignore
+                                entry.SetSlidingExpiration(TimeSpan.FromMinutes 10.0) |> ignore
 
                                 let criteria =
                                     DetailsQuery.newCriteria ()

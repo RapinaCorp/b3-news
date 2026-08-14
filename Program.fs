@@ -128,9 +128,6 @@ let rec main (args: string array) : int =
     if args.Length = 0 || args.[0] = "help" then
         usage ()
 
-    System.Net.ServicePointManager.SecurityProtocol <-
-        System.Net.SecurityProtocolType.Tls12 ||| System.Net.SecurityProtocolType.Tls13
-
     match args.[0] with
     | "reclassify" ->
         Fix.reclassify ()

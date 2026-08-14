@@ -14,7 +14,7 @@ B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notí
 
 ### Pré-requisitos
 
-*   [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+*   [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ### Compilando e Executando
 
@@ -24,12 +24,19 @@ B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notí
     cd B3News
     ```
 
-2.  **Compile o projeto:**
+2.  **Gere o modelo de ML (necessário na primeira compilação):**
+    O projeto `B3News` incorpora o modelo `ML/data/B3NewsModel.zip` como recurso; a compilação falha se o arquivo não existir. Gere-o executando o projeto de ML uma vez:
+    ```bash
+    dotnet run --project ML
+    ```
+    > Observação: `ML/Program.fs` define qual modelo é gerado. Para o `B3NewsModel.zip`, mantenha `SingleLabel.run ()` ativo (o padrão é `MultiLabel.run ()`, que gera `B3MultiLabel.zip`).
+
+3.  **Compile o projeto:**
     ```bash
     dotnet build
     ```
 
-3.  **Execute a aplicação:**
+4.  **Execute a aplicação:**
     Para ver as opções de linha de comando disponíveis, execute:
     ```bash
     dotnet run
@@ -39,14 +46,15 @@ B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notí
 
 A aplicação pode ser executada com diferentes argumentos para realizar tarefas específicas:
 
-*   **Atualizar o cache de notícias:**
-    Este comando baixa as notícias do dia e as adiciona ao arquivo `reports.json`.
+*   **Atualizar o cache de notícias em JSON:**
+    Este comando adiciona ao arquivo `reports.json` as notícias do período informado (`data1` e, opcionalmente, `data2` no formato `AAAA-MM-DD` ou `hoje`):
     ```bash
-    dotnet run update-json
+    dotnet run update-json <data1> [<data2>]
     ```
+    Exemplo: `dotnet run update-json hoje`
 
-*   **Iniciar o servidor web:**
-    Este comando inicia um servidor local para servir a interface web de visualização.
+*   **Iniciar o servidor da API:**
+    Este comando inicia um servidor local para servir a interface web e a API JSON de visualização.
     ```bash
     dotnet run serve-api
     ```
