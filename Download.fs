@@ -20,125 +20,179 @@ let patternEnetNbc = "(https://www.rad.cvm.gov.br/ENET/frmNBC.aspx\\?NSD=[0-9]+)
 /// Custom operator for combining paths
 let (+/) path1 path2 = Path.Combine(path1, path2)
 
-let fnetURL (url: string) : string option =
-    let pattern = patternFnet
-    let urlMatch = Regex.Match(url, pattern).Groups.[1].Value
+type Source =
+    | Fnet of id: int
+    | Enet of id: int
+    | EnetNbc of nsd: string
+    | Unknown of url: string
 
-    let newUrl =
-        "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=" + urlMatch
+type Kind =
+    | Pdf
+    | Html
 
-    if String.IsNullOrEmpty(urlMatch) then
-        None
+type FetchErr =
+    | BadUrl of string
+    | Network of exn
+    | Upstream of status: int * body: string
+    | Decode of stage: string * msg: string
+
+type SaveOutcome =
+    | Written of path: string
+    | Skipped of path: string
+
+/// Classifies a B3 download-source URL. Single place where the raw URL patterns
+/// are matched; callers pattern-match on `Source` instead of re-running regexes.
+let classify (url: string) : Source =
+    let fnetMatch = Regex.Match(url, patternFnet)
+    let enetMatch = Regex.Match(url, patternEnet)
+    let nbcMatch = Regex.Match(url, patternEnetNbc)
+    if fnetMatch.Success then
+        Fnet(int fnetMatch.Groups.[1].Value)
+    elif enetMatch.Success then
+        Enet(int enetMatch.Groups.[1].Value)
+    elif nbcMatch.Success then
+        EnetNbc nbcMatch.Value
     else
-        Some(newUrl)
+        Unknown url
 
-/// fnet returns the body (html) from the requested page
-let fnet (url: string) : Async<Result<string, string>> =
-    async {
-        match fnetURL url with
-        | None -> return Error "URL não encontrada"
-        | Some(newUrl) ->
-            try
-                use httpClient = new HttpClient()
-                let! response = httpClient.GetAsync(newUrl) |> Async.AwaitTask
-                let! content = response.Content.ReadAsStreamAsync() |> Async.AwaitTask
-                use reader = new StreamReader(content)
-                let html = reader.ReadToEnd()
-                return Ok html
-            with ex ->
-                return Error ex.Message
-    }
+let private httpClient = new HttpClient()
 
-type EnetBody = { d: string }
+let private truncate (s: string) (maxLen: int) =
+    if String.length s <= maxLen then
+        s
+    else
+        s.Substring(0, maxLen)
 
-let enet (url: string) : Async<Result<string, string>> =
-    async {
-        let nid = Regex.Match(url, patternEnet).Groups.[1].Value
-
-        let obj =
-            $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{nid}", "token": "", "versaoCaptcha": "" }}"""
-
-        if String.IsNullOrEmpty(nid) then
-            return Error("Invalid URL " + url)
-        else
-            let httpClient = new HttpClient()
-
-            let! response =
-                httpClient.PostAsync(
-                    "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF",
-                    new StringContent(obj, System.Text.Encoding.UTF8, "application/json")
-                )
-                |> Async.AwaitTask
-
-            let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-
-            if response.IsSuccessStatusCode then
-                match Decode.Auto.fromString<EnetBody> content with
-                | Ok json -> return Ok json.d
-                | Error err -> return Error("Error: " + err)
-            else
-                return Error("Error: " + content)
-    }
-
-let strcasestr (pattern: string) (bytes: byte[]) : bool =
-    let body = System.Text.Encoding.UTF8.GetString(bytes)
-    body.ToUpper().Contains(pattern.ToUpper())
-
-let removeQuotes (body: string) : string =
+let private removeQuotes (body: string) : string =
     if body.StartsWith("\"") && body.EndsWith("\"") then
         body[1 .. (max 1 body.Length - 2)] // remove quotes from "body"
     else
         body
 
-let writeToFile (filename: string) (data': string) : Async<string> =
-    async {
-        use fileStream = new FileStream(filename, FileMode.Create)
-        let bytesUtf8 = System.Text.Encoding.UTF8.GetBytes data'
-        do! fileStream.WriteAsync(bytesUtf8, 0, data'.Length) |> Async.AwaitTask
-        return filename
-    }
-
-let save (folder: string) (filename: string) (body: string) : Async<Result<string, string>> =
-    let ext (bytes: byte[]) : string =
-        if strcasestr "<html>" bytes then ".html" else ".pdf"
-
+let rec private getWithRetry (url: string) (attempts: int) =
     async {
         try
-            let decoded = removeQuotes body |> Convert.FromBase64String
-            System.IO.Directory.CreateDirectory(_outputDir +/ folder) |> ignore
-            let filePath = _outputDir +/ folder +/ (filename + ext decoded)
-            // Return error if files already exists
-            if File.Exists filePath then
-                return Error "arquivo já existe"
-            else
-                use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
-                do! fileStream.WriteAsync(decoded, 0, decoded.Length) |> Async.AwaitTask
-                return Ok filePath
+            let! resp = httpClient.GetAsync(url) |> Async.AwaitTask
+            return Ok resp
         with ex ->
-            return Error(sprintf "erro ao salvar: %s" ex.Message)
+            let msg = ex.ToString()
+            if attempts > 1 && msg.Contains("The SSL connection could not be established") then
+                Log.warning (sprintf "GET failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
+                do! Async.Sleep 500
+                return! getWithRetry url (attempts - 1)
+            else
+                return Error ex
     }
 
-let getBody (url: string) =
+let rec private postWithRetry (url: string) (content: StringContent) (attempts: int) =
     async {
-        if Regex.IsMatch(url, patternFnet) then return! fnet url
-        elif Regex.IsMatch(url, patternEnet) then return! enet url
-        else return Error $"URL inválida '{url}'"
+        try
+            let! resp = httpClient.PostAsync(url, content) |> Async.AwaitTask
+            return Ok resp
+        with ex ->
+            let msg = ex.ToString()
+            if attempts > 1 && msg.Contains("The SSL connection could not be established") then
+                Log.warning (sprintf "POST failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
+                do! Async.Sleep 500
+                return! postWithRetry url content (attempts - 1)
+            else
+                return Error ex
     }
 
-/// Returns the valid matching url (fnet or enet) for the given url, or Error if invalid
-let getSourceUrl (url: string) : string =
-    printfn "getSourceUrl: %s" url
-    if Regex.IsMatch(url, patternFnet) then url
-    elif Regex.IsMatch(url, patternEnet) then url
-    else url
+/// Content kind of decoded bytes. Semantics match the old `strcasestr "<html>"`
+/// sniffing: PDF when the bytes carry the %PDF magic, otherwise HTML when they
+/// carry "<html>", defaulting to Pdf (today's ".pdf" fallback).
+let detectKind (bytes: byte[]) : Kind =
+    let body = System.Text.Encoding.UTF8.GetString(bytes)
+    if body.ToUpper().Contains("%PDF") then Pdf
+    elif body.ToUpper().Contains("<HTML>") then Html
+    else Pdf
 
-let downloadAndSaveFileAsync folder filename url : Async<Result<string, string>> =
+/// Binds an async Result-returning function over a Result, passing errors through.
+let private bindAsync (f: 'a -> Async<Result<'b, 'err>>) (r: Result<'a, 'err>) : Async<Result<'b, 'err>> =
+    match r with
+    | Error err -> async { return Error err }
+    | Ok value -> f value
+
+/// Reads the response body, mapping non-success statuses to `Upstream`.
+let private readBody (resp: HttpResponseMessage) : Async<Result<string, FetchErr>> =
     async {
-        let! bodyResult = getBody url
+        use response = resp
+        let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+        if response.IsSuccessStatusCode then
+            return Ok content
+        else
+            return Error(Upstream(int response.StatusCode, truncate content 256))
+    }
 
-        match bodyResult with
+/// Decodes a base64 string into bytes, mapping failures to `Decode`.
+let private decodeBase64 (b64: string) : Result<byte[], FetchErr> =
+    try
+        Ok(Convert.FromBase64String b64)
+    with ex ->
+        Error(Decode("base64", ex.Message))
+
+/// Fetches the bytes behind a classified B3 source, decoding base64 and
+/// classifying content kind. Retries transient SSL failures (3 attempts).
+let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
+    let finalize (bytes: byte[]) = (bytes, detectKind bytes)
+    async {
+        match source with
+        | Unknown url -> return Error(BadUrl url)
+        | EnetNbc nsd -> return Error(BadUrl nsd)
+        | Fnet id ->
+            let url = sprintf "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=%d" id
+            let! respResult = getWithRetry url 3
+            let resp = Result.mapError Network respResult
+            let! body = bindAsync readBody resp
+            return body |> Result.bind (decodeBase64 << removeQuotes) |> Result.map finalize
+        | Enet id ->
+            let jsonBody =
+                $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{id}", "token": "", "versaoCaptcha": "" }}"""
+            use content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json")
+            let! respResult =
+                postWithRetry
+                    "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
+                    content
+                    3
+            let resp = Result.mapError Network respResult
+            let! body = bindAsync readBody resp
+            let decoded =
+                body
+                |> Result.bind (fun text ->
+                    match Decode.Auto.fromString<{| d: string |}> text with
+                    | Ok json -> decodeBase64 json.d
+                    | Error err -> Error(Decode("json", err)))
+            return decoded |> Result.map finalize
+    }
+
+let save (folder: string) (filename: string) (bytes: byte[]) (kind: Kind) : Async<Result<SaveOutcome, FetchErr>> =
+    let ext =
+        match kind with
+        | Pdf -> ".pdf"
+        | Html -> ".html"
+
+    async {
+        let filePath = _outputDir +/ folder +/ (filename + ext)
+        try
+            if File.Exists filePath then
+                return Ok(Skipped filePath)
+            else
+                System.IO.Directory.CreateDirectory(_outputDir +/ folder) |> ignore
+                use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
+                do! fileStream.WriteAsync(bytes, 0, bytes.Length) |> Async.AwaitTask
+                return Ok(Written filePath)
+        with ex ->
+            return Error(Decode("io", ex.Message))
+    }
+
+let downloadAndSaveFileAsync (folder: string) (filename: string) (url: string) : Async<Result<SaveOutcome, FetchErr>> =
+    async {
+        let source = classify url
+        let! fetched = fetchBytes source
+        match fetched with
         | Error err -> return Error err
-        | Ok body -> return! save folder filename body
+        | Ok (bytes, kind) -> return! save folder filename bytes kind
     }
 
 let filesListFilename = _outputDir +/ "files.lst"
@@ -185,28 +239,22 @@ let readFile (filePath: string) : Option<List<string * string>> =
 
 let readFileList () = readFile filesListFilename
 
-/// Returns an HTML <a> or <form> for the given url, depending on the type (fnet: <a>, enet: <form POST>)
+/// Returns an HTML <a> for the given url, dispatching on the classified source:
+/// fnet links directly to the CVM document, enet links to the local /pdf proxy,
+/// everything else links to the raw url.
 let getHtmlLink (url: string) (linkText: string) : string =
-    if Regex.IsMatch(url, patternFnet) then
-        match fnetURL url with
-        | Some directUrl -> $"<a href='{directUrl}' target='_self'>{linkText}</a>"
-        | None -> linkText
-    elif Regex.IsMatch(url, patternEnet) then
-        let nid = Regex.Match(url, patternEnet).Groups.[1].Value
-        let localPdfUrl = $"/pdf/{nid}.pdf"
-        $"<a href='{localPdfUrl}' target='_self'>{linkText}</a>"
-    else
-        $"<a href='{url}' target='_self'>{linkText}</a>"
+    match classify url with
+    | Fnet id ->
+        $"<a href='https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id={id}' target='_self'>{linkText}</a>"
+    | Enet id -> $"<a href='/pdf/{id}.pdf' target='_self'>{linkText}</a>"
+    | EnetNbc _
+    | Unknown _ -> $"<a href='{url}' target='_self'>{linkText}</a>"
 
+/// Returns the display url for the given raw url, dispatching on the classified
+/// source: fnet direct link, enet local proxy, nbc untouched, unknown passthrough.
 let getRealUrl (url: string) : string =
-    if Regex.IsMatch(url, patternFnet) then
-        match fnetURL url with
-        | Some directUrl -> directUrl
-        | None -> url
-    elif Regex.IsMatch(url, patternEnet) then
-        let nid = Regex.Match(url, patternEnet).Groups.[1].Value
-        $"/pdf/{nid}.pdf"
-    elif Regex.IsMatch(url, patternEnetNbc) then
-        Regex.Match(url, patternEnetNbc).Value
-    else
-        url
+    match classify url with
+    | Fnet id -> sprintf "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=%d" id
+    | Enet id -> $"/pdf/{id}.pdf"
+    | EnetNbc nsd -> nsd
+    | Unknown _ -> url
