@@ -1,2 +1,2 @@
-﻿// SingleLabel.run ()
-MultiLabel.run ()
+﻿SingleLabel.run ()
+//MultiLabel.run ()
