@@ -12,11 +12,14 @@ let download folderName (d: Details.NewsDetail) : Async<Option<string * string>>
     async {
         let! result = Download.downloadAndSaveFileAsync (folderName d.filename) d.filename d.url
         match result with
-        | Ok filename ->
-            printfn "=> %s" filename
-            return Some(d.ticker, filename)
+        | Ok (Download.Written path) ->
+            printfn "=> %s" path
+            return Some(d.ticker, path)
+        | Ok (Download.Skipped path) ->
+            Log.notice <| sprintf "=> %s (arquivo já existe)" path
+            return None
         | Error err ->
-            Log.error <| sprintf "x Erro (download): %s | %s" err d.filename
+            Log.error <| sprintf "x Erro (download): %A | %s" err d.filename
             return None
     }
 

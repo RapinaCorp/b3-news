@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Include="DetailsQueryTests.fs" />
     <Compile Include="ApiTests.fs" />
+    <Compile Include="DownloadTests.fs" />
     <Compile Include="IntegrationTests.fs" />
   </ItemGroup>
 
