@@ -48,6 +48,18 @@ let describeFetchErr (err: FetchErr) : string =
     | Decode(stage, msg) -> sprintf "falha ao decodificar %s: %s" stage msg
     | Io msg -> sprintf "erro de I/O: %s" msg
 
+/// Maps a FetchErr to an HTTP status for client-facing responses. Upstream
+/// errors mirror the remote status; network/decoding/IO failures map to the
+/// closest 4xx/5xx.
+let httpStatusForFetchErr (err: FetchErr) : int =
+    match err with
+    | BadUrl _ -> 400
+    | Network _ -> 502
+    | Upstream(status, _) -> status
+    | Decode("json", _) -> 502
+    | Decode _ -> 422
+    | Io _ -> 500
+
 type SaveOutcome =
     | Written of path: string
     | Skipped of path: string

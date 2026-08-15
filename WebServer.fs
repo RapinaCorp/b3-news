@@ -31,21 +31,6 @@ let getMimeType (filePath: string) =
     | ".pdf" -> "application/pdf"
     | _ -> "application/octet-stream" // Default MIME type for unknown extensions
 
-let rec postWithRetry (client: System.Net.Http.HttpClient) (url: string) (content: System.Net.Http.StringContent) (attempts: int) =
-    async {
-        try
-            let! resp = client.PostAsync(url, content) |> Async.AwaitTask
-            return Ok resp
-        with ex ->
-            let msg = ex.ToString()
-            if attempts > 1 && msg.Contains("The SSL connection could not be established") then
-                Log.warning (sprintf "POST failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
-                do! Async.Sleep 500
-                return! postWithRetry client url content (attempts - 1)
-            else
-                return Error ex
-    }
-
 let handleRequestAsync (context: HttpListenerContext) =
     async {
         let request = context.Request
@@ -53,44 +38,26 @@ let handleRequestAsync (context: HttpListenerContext) =
 
         let filePath = request.Url.LocalPath.TrimStart('/')
 
-        // Handle /pdf/<numeroProtocolo> as a special POST to remote
+        // Handle /pdf/<numeroProtocolo> by fetching the Enet document through Download
         if request.Url.AbsolutePath.StartsWith("/pdf/") then
             let numeroProtocolo = request.Url.AbsolutePath.Substring("/pdf/".Length)
-            if not (String.IsNullOrWhiteSpace(numeroProtocolo)) then
-                let postUrl = "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
-                let jsonBody = $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{numeroProtocolo}", "token": "", "versaoCaptcha": "" }}"""
-
-                use client = new System.Net.Http.HttpClient()
-                use content = new System.Net.Http.StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json")
-
-                let! postResult = postWithRetry client postUrl content 3
-                match postResult with
-                | Ok postResp ->
-                    let! postContent = postResp.Content.ReadAsStringAsync() |> Async.AwaitTask
-                    if postResp.IsSuccessStatusCode then
-                        match Thoth.Json.Net.Decode.Auto.fromString<{| d: string |}> postContent with
-                        | Ok result ->
-                            let pdfBytes = System.Convert.FromBase64String(result.d)
-                            response.ContentType <- "application/pdf"
-                            response.ContentLength64 <- int64 pdfBytes.Length
-                            do! response.OutputStream.WriteAsync(pdfBytes, 0, pdfBytes.Length) |> Async.AwaitTask
-                            do! response.OutputStream.FlushAsync() |> Async.AwaitTask
-                        | Error err ->
-                            response.StatusCode <- 502
-                            use sw = new StreamWriter(response.OutputStream)
-                            do! sw.WriteAsync($"Erro ao decodificar PDF: {err}") |> Async.AwaitTask
-                    else
-                        response.StatusCode <- int postResp.StatusCode
-                        use sw = new StreamWriter(response.OutputStream)
-                        do! sw.WriteAsync($"Erro ao baixar PDF remoto: {postResp.StatusCode}") |> Async.AwaitTask
-                | Error ex ->
-                    response.StatusCode <- 502
-                    use sw = new StreamWriter(response.OutputStream)
-                    do! sw.WriteAsync($"Erro de rede ao baixar PDF: {ex.Message}") |> Async.AwaitTask
-            else
+            match System.Int32.TryParse numeroProtocolo with
+            | false, _ ->
                 response.StatusCode <- 400
                 use sw = new StreamWriter(response.OutputStream)
-                do! sw.WriteAsync("Caminho inválido para PDF.") |> Async.AwaitTask
+                do! sw.WriteAsync("ID inválido para PDF.") |> Async.AwaitTask
+            | true, id ->
+                let! fetched = Download.fetchBytes (Download.Enet id)
+                match fetched with
+                | Ok (bytes, _) ->
+                    response.ContentType <- "application/pdf"
+                    response.ContentLength64 <- int64 bytes.Length
+                    do! response.OutputStream.WriteAsync(bytes, 0, bytes.Length) |> Async.AwaitTask
+                    do! response.OutputStream.FlushAsync() |> Async.AwaitTask
+                | Error err ->
+                    response.StatusCode <- Download.httpStatusForFetchErr err
+                    use sw = new StreamWriter(response.OutputStream)
+                    do! sw.WriteAsync(Download.describeFetchErr err) |> Async.AwaitTask
         else
             // Serve index.html if no specific file is requested
             let fileToServe =
