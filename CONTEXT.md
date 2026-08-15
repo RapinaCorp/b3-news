@@ -17,7 +17,9 @@ cannot leak full upstream payloads (base64 PDFs, JSON error bodies) into logs
 or HTTP responses. `Decode` means content decoding failed (base64/json);
 `Io` means a disk write failed in `Download.save`. `Download.describeFetchErr`
 renders a short, log-safe message; exception messages are not truncated (they
-do not carry upstream payloads).
+do not carry upstream payloads). `Download.httpStatusForFetchErr` maps a
+`FetchErr` to an HTTP status for client-facing responses: `Upstream` mirrors
+the remote status, network/decode/IO map to the nearest 4xx/5xx.
 
 ## SaveOutcome
 Result of `Download.save`: `Written of path | Skipped of path`.

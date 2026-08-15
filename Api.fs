@@ -8,7 +8,6 @@ open System.Net
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
-open System.Net.Http
 open System.Threading.Tasks
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Caching.Memory
@@ -176,73 +175,27 @@ let handleNumberOfReports (cache: IMemoryCache) (ctx: HttpContext) : Task =
             do! writeErrorResponse ctx HttpStatusCode.InternalServerError ex.Message
     }
 
-let isPdfContent (pdfBytes: byte array) : bool =
-    // Check if it starts with PDF signature
-    if pdfBytes.Length < 4 then
-        false
-    else
-        // PDF files start with "%PDF"
-        pdfBytes.[0] = 0x25uy
-        && pdfBytes.[1] = 0x50uy
-        && pdfBytes.[2] = 0x44uy
-        && pdfBytes.[3] = 0x46uy
-
 let handlePdfRequest (ctx: HttpContext) : Task =
     task {
         let id = ctx.Request.RouteValues["id"] :?> string
-        use client = new HttpClient()
-        let jsonBody =
-            $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{id}", "token": "", "versaoCaptcha": "" }}"""
-        let remoteUrl =
-            "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
-        use content =
-            new System.Net.Http.StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json")
-        let! postResp = WebServer.postWithRetry client remoteUrl content 3
-        match postResp with
-        | Error ex ->
-            ctx.Response.StatusCode <- 502
-            do! ctx.Response.WriteAsync($"Error fetching PDF: {ex.Message}")
+        match System.Int32.TryParse id with
+        | false, _ ->
+            ctx.Response.StatusCode <- 400
+            do! ctx.Response.WriteAsync("ID inválido")
             return ()
-        | Ok response ->
-            if response.IsSuccessStatusCode then
-                let! jsonStr = response.Content.ReadAsStringAsync()
-                try
-                    let doc = System.Text.Json.JsonDocument.Parse(jsonStr)
-                    match doc.RootElement.TryGetProperty("d") with
-                    | true, dProp ->
-                        let base64Pdf = dProp.GetString()
-                        if not (System.String.IsNullOrEmpty(base64Pdf)) then
-                            try
-                                let pdfBytes = System.Convert.FromBase64String(base64Pdf)
-                                if not (isPdfContent pdfBytes) then
-                                    ctx.Response.StatusCode <- 422 // Unprocessable Entity
-                                    do! ctx.Response.WriteAsync("Invalid PDF content received from server.")
-                                else
-                                    ctx.Response.StatusCode <- 200
-                                    ctx.Response.ContentType <- "application/pdf"
-                                    ctx.Response.Headers.["Content-Disposition"] <- $"""inline; filename={id}.pdf"""
-                                    do! ctx.Response.Body.WriteAsync(pdfBytes, 0, pdfBytes.Length)
-                            with
-                            | :? System.FormatException ->
-                                ctx.Response.StatusCode <- 422
-                                do! ctx.Response.WriteAsync("Invalid base64 PDF data received from server.")
-                            | ex ->
-                                ctx.Response.StatusCode <- 500
-                                do! ctx.Response.WriteAsync($"Error processing PDF data: {ex.Message}")
-                        else
-                            ctx.Response.StatusCode <- 502
-                            do! ctx.Response.WriteAsync("PDF data missing in response.")
-                    | false, _ ->
-                        ctx.Response.StatusCode <- 502
-                        do! ctx.Response.WriteAsync("Missing 'd' property in response JSON.")
-                with ex ->
-                    ctx.Response.StatusCode <- 502
-                    ctx.Response.ContentType <- "text/html; charset=utf-8"
-                    // do! ctx.Response.WriteAsync($"Error parsing PDF response: {ex.Message}")
-                    do! ctx.Response.WriteAsync(jsonStr)
-            else
-                ctx.Response.StatusCode <- 502
-                do! ctx.Response.WriteAsync("Failed to fetch PDF from remote server.")
+        | true, idInt ->
+            let! fetched = Download.fetchBytes (Download.Enet idInt) |> Async.StartAsTask
+            match fetched with
+            | Error err ->
+                ctx.Response.StatusCode <- Download.httpStatusForFetchErr err
+                do! ctx.Response.WriteAsync(Download.describeFetchErr err)
+                return ()
+            | Ok (pdfBytes, _) ->
+                ctx.Response.StatusCode <- 200
+                ctx.Response.ContentType <- "application/pdf"
+                ctx.Response.Headers.["Content-Disposition"] <- $"""inline; filename={id}.pdf"""
+                do! ctx.Response.Body.WriteAsync(pdfBytes, 0, pdfBytes.Length)
+                return ()
     }
 
 let handleHtmlFile (filePath: string) (ctx: HttpContext) : Task =
