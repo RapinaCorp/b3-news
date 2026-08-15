@@ -13,9 +13,14 @@ let patternFnet =
     "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento\\?id=([0-9]+)"
 
 let patternEnet =
-    "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
+    "https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
 
-let patternEnetNbc = "(https://www.rad.cvm.gov.br/ENET/frmNBC.aspx\\?NSD=[0-9]+)"
+let patternEnetNbc =
+    "(https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmNBC.aspx\\?NSD=[0-9]+)"
+
+/// URL do WebMethod que devolve o PDF (base64) — não depende do id, então fica fixa.
+let private enetApiUrl =
+    "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
 
 /// Custom operator for combining paths
 let (+/) path1 path2 = Path.Combine(path1, path2)
@@ -35,6 +40,8 @@ type FetchErr =
     | Network of exn
     | Upstream of status: int * body: string
     | Decode of stage: string * msg: string
+    | Rejected of reason: string
+    | CaptchaRequired of protocolo: string
     | Io of msg: string
 
 /// Renders a FetchErr as a short, log-safe string. Upstream bodies are already
@@ -46,6 +53,8 @@ let describeFetchErr (err: FetchErr) : string =
     | Network ex -> sprintf "falha de rede: %s" ex.Message
     | Upstream(status, body) -> sprintf "erro do servidor (HTTP %d): %s" status body
     | Decode(stage, msg) -> sprintf "falha ao decodificar %s: %s" stage msg
+    | Rejected reason -> sprintf "CVM rejeitou a requisição: %s" reason
+    | CaptchaRequired protocolo -> sprintf "CVM exigiu captcha para o protocolo %s (requer navegador)" protocolo
     | Io msg -> sprintf "erro de I/O: %s" msg
 
 /// Maps a FetchErr to an HTTP status for client-facing responses. Upstream
@@ -58,6 +67,8 @@ let httpStatusForFetchErr (err: FetchErr) : int =
     | Upstream(status, _) -> status
     | Decode("json", _) -> 502
     | Decode _ -> 422
+    | Rejected _ -> 502
+    | CaptchaRequired _ -> 503
     | Io _ -> 500
 
 type SaveOutcome =
@@ -93,35 +104,34 @@ let private removeQuotes (body: string) : string =
     else
         body
 
-let rec private getWithRetry (url: string) (attempts: int) =
+/// Retries a transient HTTP op (GET or POST) on SSL handshake failures.
+/// Both getWithRetry and postWithRetry are now thin wrappers around this.
+let rec private withRetry (attempts: int) (op: unit -> Threading.Tasks.Task<'a>) : Async<Result<'a, exn>> =
     async {
         try
-            let! resp = httpClient.GetAsync url |> Async.AwaitTask
-            return Ok resp
+            let! result = op () |> Async.AwaitTask
+            return Ok result
         with ex ->
             let msg = ex.ToString()
             if attempts > 1 && msg.Contains "The SSL connection could not be established" then
-                Log.warning (sprintf "GET failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
+                Log.warning (sprintf "request failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
                 do! Async.Sleep 500
-                return! getWithRetry url (attempts - 1)
+                return! withRetry (attempts - 1) op
             else
                 return Error ex
     }
 
-let rec private postWithRetry (url: string) (content: StringContent) (attempts: int) =
-    async {
-        try
-            let! resp = httpClient.PostAsync(url, content) |> Async.AwaitTask
-            return Ok resp
-        with ex ->
-            let msg = ex.ToString()
-            if attempts > 1 && msg.Contains "The SSL connection could not be established" then
-                Log.warning (sprintf "POST failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
-                do! Async.Sleep 500
-                return! postWithRetry url content (attempts - 1)
-            else
-                return Error ex
-    }
+let private getWithRetry (url: string) (attempts: int) =
+    withRetry attempts (fun () -> httpClient.GetAsync url)
+
+let private postWithRetry (url: string) (content: StringContent) (headers: (string * string) list) (attempts: int) =
+    withRetry attempts (fun () ->
+        // Não usar `use`/dispose aqui: req.Dispose() derrubaria `content`, que é
+        // reaproveitado entre tentativas de retry.
+        let req = new HttpRequestMessage(HttpMethod.Post, url, Content = content)
+        headers
+        |> List.iter (fun (k, v) -> req.Headers.TryAddWithoutValidation(k, v) |> ignore)
+        httpClient.SendAsync req)
 
 /// Content kind of decoded bytes. Semantics match the old `strcasestr "<html>"`
 /// sniffing: PDF when the bytes carry the %PDF magic, otherwise HTML when they
@@ -156,6 +166,16 @@ let private decodeBase64 (b64: string) : Result<byte[], FetchErr> =
     with ex ->
         Error(Decode("base64", ex.Message))
 
+/// Interpreta o corpo JSON `{ "d": ... }` do WebMethod ExibirPDF, distinguindo
+/// erro de negócio (":ERRO:..."), exigência de captcha ("V2") e sucesso (base64).
+let private parseIpeResponse (protocolo: int) (text: string) : Result<byte[], FetchErr> =
+    match Decode.Auto.fromString<{| d: string |}> text with
+    | Error err -> Error(Decode("json", err))
+    | Ok json when json.d = "V2" -> Error(CaptchaRequired(string protocolo))
+    | Ok json when json.d.StartsWith ":ERRO:" -> Error(Rejected(json.d.Substring 6))
+    | Ok json when String.IsNullOrWhiteSpace json.d -> Error(Rejected "resposta vazia da CVM")
+    | Ok json -> decodeBase64 json.d
+
 /// Fetches the bytes behind a classified B3 source, decoding base64 and
 /// classifying content kind. Retries transient SSL failures (3 attempts).
 let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
@@ -172,20 +192,29 @@ let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
             let! body = bindAsync readBody resp
             return body |> Result.bind (decodeBase64 << removeQuotes) |> Result.map finalize
         | Enet id ->
+            // A CVM passou a servir uma página wrapper (JS + WebMethod) em vez do PDF
+            // direto, e o endpoint migrou de /ENET/ para /ENETWEB/. O WebMethod também
+            // parece exigir uma sessão "aquecida" — por isso o GET na página do
+            // visualizador antes do POST.
+            let viewerUrl =
+                sprintf "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx?ID=%d" id
+
             let jsonBody =
                 $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{id}", "token": "", "versaoCaptcha": "" }}"""
             use content = new StringContent(jsonBody, Text.Encoding.UTF8, "application/json")
-            let! respResult =
-                postWithRetry "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF" content 3
-            let resp = Result.mapError Network respResult
-            let! body = bindAsync readBody resp
-            let decoded =
-                body
-                |> Result.bind (fun text ->
-                    match Decode.Auto.fromString<{| d: string |}> text with
-                    | Ok json -> decodeBase64 json.d
-                    | Error err -> Error(Decode("json", err)))
-            return decoded |> Result.map finalize
+            let headers = [ "X-Requested-With", "XMLHttpRequest" ]
+
+            let! warmup = getWithRetry viewerUrl 3
+            let! body =
+                Result.mapError Network warmup
+                |> bindAsync (fun resp ->
+                    resp.Dispose()
+                    async {
+                        let! respResult = postWithRetry enetApiUrl content headers 3
+                        return! bindAsync readBody (Result.mapError Network respResult)
+                    })
+
+            return body |> Result.bind (parseIpeResponse id) |> Result.map finalize
     }
 
 let save (folder: string) (filename: string) (bytes: byte[]) (kind: Kind) : Async<Result<SaveOutcome, FetchErr>> =
