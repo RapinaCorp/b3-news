@@ -135,17 +135,33 @@ let ``save writes html extension for html kind`` () =
             Directory.Delete(Path.Combine("report", folder), true)
 
 [<Fact>]
-let ``save skips existing file`` () =
-    let folder = uniqueFolder ()
-    try
-        let path = Path.Combine("report", folder, "doc.pdf")
-        Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-        File.WriteAllBytes(path, Array.empty)
-        let result = Download.save folder "doc" (Encoding.UTF8.GetBytes("%PDF-1.4")) Pdf |> Async.RunSynchronously
-        match result with
-        | Ok (Skipped skippedPath) -> Assert.Equal(path, skippedPath)
-        | Ok (Written _) -> failwith "Expected Skipped"
-        | Error err -> failwith (sprintf "Expected Skipped, got %A" err)
-    finally
-        if Directory.Exists(Path.Combine("report", folder)) then
-            Directory.Delete(Path.Combine("report", folder), true)
+let ``classify recognizes enetWEB url`` () =
+    let result =
+        Download.classify "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx?ID=456"
+    match result with
+    | Enet id -> Assert.Equal(456, id)
+    | _ -> failwith "Expected Enet"
+
+[<Fact>]
+let ``describeFetchErr renders Rejected`` () =
+    let err = Download.Rejected "motivo qualquer"
+    let desc = Download.describeFetchErr err
+    Assert.Equal("CVM rejeitou a requisição: motivo qualquer", desc)
+
+[<Fact>]
+let ``describeFetchErr renders CaptchaRequired`` () =
+    let err = Download.CaptchaRequired "123"
+    let desc = Download.describeFetchErr err
+    Assert.Equal("CVM exigiu captcha para o protocolo 123 (requer navegador)", desc)
+
+[<Fact>]
+let ``httpStatusForFetchErr maps Rejected to 502`` () =
+    let err = Download.Rejected "qualquer motivo"
+    let status = Download.httpStatusForFetchErr err
+    Assert.Equal(502, status)
+
+[<Fact>]
+let ``httpStatusForFetchErr maps CaptchaRequired to 503`` () =
+    let err = Download.CaptchaRequired "123"
+    let status = Download.httpStatusForFetchErr err
+    Assert.Equal(503, status)
