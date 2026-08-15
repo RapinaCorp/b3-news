@@ -76,7 +76,7 @@ let private truncate (s: string) (maxLen: int) =
         s.Substring(0, maxLen)
 
 let private removeQuotes (body: string) : string =
-    if body.StartsWith("\"") && body.EndsWith("\"") then
+    if body.StartsWith "\"" && body.EndsWith "\"" then
         body[1 .. (max 1 body.Length - 2)] // remove quotes from "body"
     else
         body
@@ -84,11 +84,11 @@ let private removeQuotes (body: string) : string =
 let rec private getWithRetry (url: string) (attempts: int) =
     async {
         try
-            let! resp = httpClient.GetAsync(url) |> Async.AwaitTask
+            let! resp = httpClient.GetAsync url |> Async.AwaitTask
             return Ok resp
         with ex ->
             let msg = ex.ToString()
-            if attempts > 1 && msg.Contains("The SSL connection could not be established") then
+            if attempts > 1 && msg.Contains "The SSL connection could not be established" then
                 Log.warning (sprintf "GET failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
                 do! Async.Sleep 500
                 return! getWithRetry url (attempts - 1)
@@ -103,7 +103,7 @@ let rec private postWithRetry (url: string) (content: StringContent) (attempts: 
             return Ok resp
         with ex ->
             let msg = ex.ToString()
-            if attempts > 1 && msg.Contains("The SSL connection could not be established") then
+            if attempts > 1 && msg.Contains "The SSL connection could not be established" then
                 Log.warning (sprintf "POST failed with SSL error, retrying... (%d attempts left)" (attempts - 1))
                 do! Async.Sleep 500
                 return! postWithRetry url content (attempts - 1)
@@ -115,9 +115,9 @@ let rec private postWithRetry (url: string) (content: StringContent) (attempts: 
 /// sniffing: PDF when the bytes carry the %PDF magic, otherwise HTML when they
 /// carry "<html>", defaulting to Pdf (today's ".pdf" fallback).
 let detectKind (bytes: byte[]) : Kind =
-    let body = System.Text.Encoding.UTF8.GetString(bytes)
-    if body.ToUpper().Contains("%PDF") then Pdf
-    elif body.ToUpper().Contains("<HTML>") then Html
+    let body = System.Text.Encoding.UTF8.GetString bytes
+    if body.ToUpper().Contains "%PDF" then Pdf
+    elif body.ToUpper().Contains "<HTML>" then Html
     else Pdf
 
 /// Binds an async Result-returning function over a Result, passing errors through.
@@ -147,13 +147,14 @@ let private decodeBase64 (b64: string) : Result<byte[], FetchErr> =
 /// Fetches the bytes behind a classified B3 source, decoding base64 and
 /// classifying content kind. Retries transient SSL failures (3 attempts).
 let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
-    let finalize (bytes: byte[]) = (bytes, detectKind bytes)
+    let finalize (bytes: byte[]) = bytes, detectKind bytes
     async {
         match source with
         | Unknown url -> return Error(BadUrl url)
         | EnetNbc nsd -> return Error(BadUrl nsd)
         | Fnet id ->
-            let url = sprintf "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=%d" id
+            let url =
+                sprintf "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=%d" id
             let! respResult = getWithRetry url 3
             let resp = Result.mapError Network respResult
             let! body = bindAsync readBody resp
@@ -161,12 +162,9 @@ let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
         | Enet id ->
             let jsonBody =
                 $"""{{ "codigoInstituicao": "2", "numeroProtocolo": "{id}", "token": "", "versaoCaptcha": "" }}"""
-            use content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json")
+            use content = new StringContent(jsonBody, Text.Encoding.UTF8, "application/json")
             let! respResult =
-                postWithRetry
-                    "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF"
-                    content
-                    3
+                postWithRetry "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx/ExibirPDF" content 3
             let resp = Result.mapError Network respResult
             let! body = bindAsync readBody resp
             let decoded =
@@ -204,22 +202,22 @@ let downloadAndSaveFileAsync (folder: string) (filename: string) (url: string) :
         let! fetched = fetchBytes source
         match fetched with
         | Error err -> return Error err
-        | Ok (bytes, kind) -> return! save folder filename bytes kind
+        | Ok(bytes, kind) -> return! save folder filename bytes kind
     }
 
 let filesListFilename = _outputDir +/ "files.lst"
 
 let saveFileList (filelist: List<string * string>) =
-    let directory = Path.GetDirectoryName(filesListFilename)
+    let directory = Path.GetDirectoryName filesListFilename
 
     try
-        if not (Directory.Exists(directory)) then
-            Directory.CreateDirectory(directory) |> ignore
+        if not (Directory.Exists directory) then
+            Directory.CreateDirectory directory |> ignore
 
         let lines = filelist |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
 
         let fileMode =
-            if File.Exists(filesListFilename) then
+            if File.Exists filesListFilename then
                 FileMode.Append
             else
                 FileMode.Create
@@ -227,7 +225,7 @@ let saveFileList (filelist: List<string * string>) =
         use streamWriter = new StreamWriter(fileStream)
         lines |> List.iter streamWriter.WriteLine
         streamWriter.Flush()
-        fileStream.Flush(true)
+        fileStream.Flush true
     with
     | :? IOException as ex ->
         Log.error $"Erro de I/O ao salvar a lista de arquivos em '{filesListFilename}': {ex.Message}"
@@ -235,12 +233,12 @@ let saveFileList (filelist: List<string * string>) =
 
 let readFile (filePath: string) : Option<List<string * string>> =
     try
-        if File.Exists(filePath) then
-            File.ReadAllLines(filePath)
+        if File.Exists filePath then
+            File.ReadAllLines filePath
             |> Array.distinct
             |> Array.toList
-            |> List.map (fun line -> line.Split(';'))
-            |> List.map (fun arr -> (arr.[0], arr.[1]))
+            |> List.map (fun line -> line.Split ';')
+            |> List.map (fun arr -> arr.[0], arr.[1])
             |> Some
         else
             Log.warning "arquivo de listagem de arquivos não encontrado"
