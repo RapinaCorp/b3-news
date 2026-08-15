@@ -7,8 +7,6 @@ open System.IO
 
 open Thoth.Json.Net
 
-let _outputDir = "report"
-
 let patternFnet =
     "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento\\?id=([0-9]+)"
 
@@ -216,79 +214,6 @@ let fetchBytes (source: Source) : Async<Result<byte[] * Kind, FetchErr>> =
 
             return body |> Result.bind (parseIpeResponse id) |> Result.map finalize
     }
-
-let save (folder: string) (filename: string) (bytes: byte[]) (kind: Kind) : Async<Result<SaveOutcome, FetchErr>> =
-    let ext =
-        match kind with
-        | Pdf -> ".pdf"
-        | Html -> ".html"
-
-    async {
-        let filePath = _outputDir +/ folder +/ (filename + ext)
-        try
-            if File.Exists filePath then
-                return Ok(Skipped filePath)
-            else
-                System.IO.Directory.CreateDirectory(_outputDir +/ folder) |> ignore
-                use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write)
-                do! fileStream.WriteAsync(bytes, 0, bytes.Length) |> Async.AwaitTask
-                return Ok(Written filePath)
-        with ex ->
-            return Error(Io ex.Message)
-    }
-
-let downloadAndSaveFileAsync (folder: string) (filename: string) (url: string) : Async<Result<SaveOutcome, FetchErr>> =
-    async {
-        let source = classify url
-        let! fetched = fetchBytes source
-        match fetched with
-        | Error err -> return Error err
-        | Ok(bytes, kind) -> return! save folder filename bytes kind
-    }
-
-let filesListFilename = _outputDir +/ "files.lst"
-
-let saveFileList (filelist: List<string * string>) =
-    let directory = Path.GetDirectoryName filesListFilename
-
-    try
-        if not (Directory.Exists directory) then
-            Directory.CreateDirectory directory |> ignore
-
-        let lines = filelist |> List.map (fun (ticker, filename) -> ticker + ";" + filename)
-
-        let fileMode =
-            if File.Exists filesListFilename then
-                FileMode.Append
-            else
-                FileMode.Create
-        use fileStream = new FileStream(filesListFilename, fileMode, FileAccess.Write)
-        use streamWriter = new StreamWriter(fileStream)
-        lines |> List.iter streamWriter.WriteLine
-        streamWriter.Flush()
-        fileStream.Flush true
-    with
-    | :? IOException as ex ->
-        Log.error $"Erro de I/O ao salvar a lista de arquivos em '{filesListFilename}': {ex.Message}"
-    | ex -> Log.error $"Erro inesperado ao salvar a lista de arquivos: {ex.Message}"
-
-let readFile (filePath: string) : Option<List<string * string>> =
-    try
-        if File.Exists filePath then
-            File.ReadAllLines filePath
-            |> Array.distinct
-            |> Array.toList
-            |> List.map (fun line -> line.Split ';')
-            |> List.map (fun arr -> arr.[0], arr.[1])
-            |> Some
-        else
-            Log.warning "arquivo de listagem de arquivos não encontrado"
-            None
-    with err ->
-        Log.error err.Message
-        None
-
-let readFileList () = readFile filesListFilename
 
 /// Returns an HTML <a> for the given url, dispatching on the classified source:
 /// fnet links directly to the CVM document, enet links to the local /pdf proxy,
