@@ -19,7 +19,7 @@ let download folderName (d: Details.NewsDetail) : Async<Option<string * string>>
             Log.notice <| sprintf "=> %s (arquivo já existe)" path
             return None
         | Error err ->
-            Log.error <| sprintf "x Erro (download): %A | %s" err d.filename
+            Log.error <| sprintf "x Erro (download): %s | %s" (Download.describeFetchErr err) d.filename
             return None
     }
 

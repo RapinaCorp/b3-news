@@ -35,6 +35,18 @@ type FetchErr =
     | Network of exn
     | Upstream of status: int * body: string
     | Decode of stage: string * msg: string
+    | Io of msg: string
+
+/// Renders a FetchErr as a short, log-safe string. Upstream bodies are already
+/// truncated at the FetchErr boundary; exception messages are printed directly
+/// (they do not carry upstream payloads).
+let describeFetchErr (err: FetchErr) : string =
+    match err with
+    | BadUrl url -> sprintf "URL inválida: %s" url
+    | Network ex -> sprintf "falha de rede: %s" ex.Message
+    | Upstream(status, body) -> sprintf "erro do servidor (HTTP %d): %s" status body
+    | Decode(stage, msg) -> sprintf "falha ao decodificar %s: %s" stage msg
+    | Io msg -> sprintf "erro de I/O: %s" msg
 
 type SaveOutcome =
     | Written of path: string
@@ -183,7 +195,7 @@ let save (folder: string) (filename: string) (bytes: byte[]) (kind: Kind) : Asyn
                 do! fileStream.WriteAsync(bytes, 0, bytes.Length) |> Async.AwaitTask
                 return Ok(Written filePath)
         with ex ->
-            return Error(Decode("io", ex.Message))
+            return Error(Io ex.Message)
     }
 
 let downloadAndSaveFileAsync (folder: string) (filename: string) (url: string) : Async<Result<SaveOutcome, FetchErr>> =
