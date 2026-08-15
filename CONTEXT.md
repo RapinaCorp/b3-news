@@ -11,10 +11,13 @@ Content kind of bytes returned by B3 surfaces, after base64 decode.
 
 ## FetchErr
 Protocol-level failure modes of `Download.fetchBytes`:
-`BadUrl of string | Network of exn | Upstream of int*string | Decode of string*string`.
+`BadUrl of string | Network of exn | Upstream of int*string | Decode of string*string | Io of string`.
 Upstream bodies are truncated to 256 chars at the `FetchErr` boundary so they
 cannot leak full upstream payloads (base64 PDFs, JSON error bodies) into logs
-or HTTP responses.
+or HTTP responses. `Decode` means content decoding failed (base64/json);
+`Io` means a disk write failed in `Download.save`. `Download.describeFetchErr`
+renders a short, log-safe message; exception messages are not truncated (they
+do not carry upstream payloads).
 
 ## SaveOutcome
 Result of `Download.save`: `Written of path | Skipped of path`.
