@@ -18,6 +18,7 @@
     <Compile Include="Details.fs" />
     <Compile Include="DetailsQuery.fs" />
     <Compile Include="JsonStore.fs" />
+    <Compile Include="NvidiaClient.fs" />
     <Compile Include="Api.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
