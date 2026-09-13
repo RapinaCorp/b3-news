@@ -79,6 +79,7 @@ let summarize (_args: string array) =
                         details
                         tickers
                         settings.MaxDocuments
+                        settings.DisableReasoning
                 let ativos = Async.RunSynchronously task
                 let path = SummaryPage.writeToFile settings.OutputFile DateTime.Now ativos
                 let okCount = ativos |> List.sumBy (fun a -> a.Comunicados.Length)

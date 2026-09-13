@@ -30,7 +30,7 @@ type private ChatResponse = { choices: ChatChoice list }
 
 let private httpClient =
     let c = new HttpClient()
-    c.Timeout <- TimeSpan.FromSeconds 90.0
+    c.Timeout <- TimeSpan.FromSeconds 150.0
     c
 
 /// Delay before retrying a 429. Uses Retry-After when present, otherwise
@@ -61,17 +61,24 @@ let parseChatContent (json: string) : Result<string, string> =
 /// blip, so those fail fast.
 let isTransientEmptyResponse (err: string) : bool = err = "resposta NVIDIA vazia"
 
-let private encodeRequest (model: string) (systemPrompt: string) (content: string) : string =
+let private encodeRequest (model: string) (systemPrompt: string) (content: string) (disableReasoning: bool) : string =
     let messages =
         Encode.list
             [ Encode.object [ "role", Encode.string "system"; "content", Encode.string systemPrompt ]
               Encode.object [ "role", Encode.string "user"; "content", Encode.string content ] ]
-    Encode.object
+    let baseFields =
         [ "model", Encode.string model
           "messages", messages
           "temperature", Encode.float defaultTemperature
           "max_tokens", Encode.int defaultMaxTokens ]
-    |> Encode.toString 0
+    // Nemotron 3 family: `reasoning_effort: "none"` disables reasoning tokens
+    // server-side, so only the final answer comes back in `content`.
+    let fields =
+        if disableReasoning then
+            baseFields @ [ "reasoning_effort", Encode.string "none" ]
+        else
+            baseFields
+    Encode.object fields |> Encode.toString 0
 
 let private retryAfterOf (resp: HttpResponseMessage) : TimeSpan option =
     let ra = resp.Headers.RetryAfter
@@ -93,13 +100,19 @@ let rec private postWithRetry
     (label: string)
     (attemptsLeft: int)
     (attempt: int)
+    (disableReasoning: bool)
     : Async<Result<string, string>> =
     async {
         let sw = Stopwatch.StartNew()
         try
             use req = new HttpRequestMessage(HttpMethod.Post, endpoint)
             req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey) |> ignore
-            req.Content <- new StringContent(encodeRequest model systemPrompt content, Encoding.UTF8, "application/json")
+            req.Content <-
+                new StringContent(
+                    encodeRequest model systemPrompt content disableReasoning,
+                    Encoding.UTF8,
+                    "application/json"
+                )
             use! resp = httpClient.SendAsync req |> Async.AwaitTask
             let! body = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
             sw.Stop()
@@ -116,7 +129,8 @@ let rec private postWithRetry
                         (attemptsLeft - 1)
                 )
                 do! Async.Sleep(int delay.TotalMilliseconds)
-                return! postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1)
+                return!
+                    postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
             elif not resp.IsSuccessStatusCode then
                 Log.warning (
                     sprintf
@@ -151,7 +165,8 @@ let rec private postWithRetry
                             (attemptsLeft - 1)
                     )
                     do! Async.Sleep(int delay.TotalMilliseconds)
-                    return! postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1)
+                    return!
+                        postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
                 | Error err ->
                     Log.warning (sprintf "NVIDIA parse falhou (%s, %dms): %s" label sw.ElapsedMilliseconds err)
                     return Error err
@@ -168,7 +183,9 @@ let rec private postWithRetry
 
 /// Envia um texto para o modelo e retorna o resumo gerado.
 /// `label` é só para log (ex: ticker); não vai na API. `maxRetries` inclui a primeira tentativa.
-let summarize (apiKey: string) (model: string) (systemPrompt: string) (content: string) (label: string) (maxRetries: int) : Async<Result<string, string>> =
+/// `disableReasoning` envia `reasoning_effort: "none"` (família Nemotron 3) para
+/// suprimir o chain-of-thought e receber só a resposta final.
+let summarize (apiKey: string) (model: string) (systemPrompt: string) (content: string) (label: string) (maxRetries: int) (disableReasoning: bool) : Async<Result<string, string>> =
     let attempts = max 1 maxRetries
     Log.info (sprintf "NVIDIA summarize: %s chars=%d" label content.Length)
-    postWithRetry apiKey model systemPrompt content label attempts 0
+    postWithRetry apiKey model systemPrompt content label attempts 0 disableReasoning

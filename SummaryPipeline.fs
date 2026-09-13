@@ -16,17 +16,27 @@ type AtivoResumo =
       ResumoConsolidado: string
       Falhas: int }
 
-let individualSystemPrompt =
-    "Resuma o comunicado abaixo em até 4 linhas, focando em:\n\
-     o que foi decidido/anunciado, valores relevantes, e impacto pro acionista.\n\
-     Não repita o texto, seja direto."
+/// Nemotron 3 Super honors `/no_think` in the system prompt to skip the
+/// chain-of-thought trace and return only the final answer. Other models
+/// ignore the directive as plain text, so it is gated behind `DisableReasoning`.
+let private withNoThink (disableReasoning: bool) (prompt: string) =
+    if disableReasoning then "/no_think\n" + prompt else prompt
 
-let consolidatedSystemPrompt (ativo: string) =
-    sprintf
-        "Você recebeu resumos dos últimos comunicados da empresa %s.\n\
-         Produza um resumo executivo dos principais pontos, em ordem cronológica,\n\
-         destacando o que é mais relevante para decisão de investimento."
-        ativo
+let individualSystemPrompt (disableReasoning: bool) =
+    withNoThink
+        disableReasoning
+        "Summarize the communication below in up to 4 lines, in Portuguese, focusing on:\n\
+         what was decided/announced, relevant values, and impact for the shareholder.\n\
+         Do not repeat the text, be direct."
+
+let consolidatedSystemPrompt (disableReasoning: bool) (ativo: string) =
+    withNoThink
+        disableReasoning
+        (sprintf
+            "You received summaries of recent communications from company %s.\n\
+             Produce an executive summary of the main points, in chronological order and in Portuguese,\n\
+             highlighting what is most relevant for investment decisions."
+            ativo)
 
 let parseDetailDate (s: string) : DateTime =
     match DateTime.TryParse s with
@@ -57,6 +67,7 @@ let private summarizeOne
     (summarize: SummarizeFn)
     (maxChars: int)
     (detail: NewsDetail)
+    (disableReasoning: bool)
     : Async<Result<ComunicadoResumo, string>> =
     async {
         let! extracted = extract detail.url maxChars
@@ -67,7 +78,7 @@ let private summarizeOne
         | Ok content ->
             let userText =
                 sprintf "Título: %s\nData: %s\n\n%s" detail.reportType detail.dateTime content.Text
-            let! summary = summarize individualSystemPrompt userText detail.ticker
+            let! summary = summarize (individualSystemPrompt disableReasoning) userText detail.ticker
             match summary with
             | Error err ->
                 Log.warning (sprintf "resumo falhou [%s] %s: %s" detail.ticker detail.url err)
@@ -95,6 +106,7 @@ let private summarizeAtivo
     (maxParallelism: int)
     (ativo: string)
     (docs: NewsDetail list)
+    (disableReasoning: bool)
     : Async<AtivoResumo> =
     async {
         if List.isEmpty docs then
@@ -106,7 +118,7 @@ let private summarizeAtivo
         else
             let! results =
                 docs
-                |> List.map (summarizeOne extract summarize maxChars)
+                |> List.map (fun doc -> summarizeOne extract summarize maxChars doc disableReasoning)
                 |> fun ops -> Async.Parallel(ops, max 1 maxParallelism)
             let ok, errors =
                 results
@@ -123,7 +135,7 @@ let private summarizeAtivo
                         return "Resumo consolidado não gerado: menos de 5 comunicados disponíveis."
                     else
                         let payload = concatenateForAggregate ativo comunicados
-                        let! agg = summarize (consolidatedSystemPrompt ativo) payload ativo
+                        let! agg = summarize (consolidatedSystemPrompt disableReasoning ativo) payload ativo
                         match agg with
                         | Ok text -> return text
                         | Error err ->
@@ -151,13 +163,14 @@ let runWith
     (details: NewsDetail list)
     (tickers: string list)
     (maxDocuments: int)
+    (disableReasoning: bool)
     : Async<AtivoResumo list> =
     async {
         let groups = selectRecentDocuments details tickers maxDocuments
         let! ativos =
             groups
             |> List.map (fun (ativo, docs) ->
-                summarizeAtivo extract summarize maxChars maxParallelism ativo docs)
+                summarizeAtivo extract summarize maxChars maxParallelism ativo docs disableReasoning)
             |> fun ops -> Async.Parallel(ops, 1)
         return ativos |> Array.toList
     }
@@ -171,7 +184,8 @@ let run
     (details: NewsDetail list)
     (tickers: string list)
     (maxDocuments: int)
+    (disableReasoning: bool)
     : Async<AtivoResumo list> =
     let summarizePrompt systemPrompt content label =
-        NvidiaClient.summarize apiKey model systemPrompt content label maxRetries
-    runWith ContentExtractor.extractText summarizePrompt maxChars maxParallelism details tickers maxDocuments
+        NvidiaClient.summarize apiKey model systemPrompt content label maxRetries disableReasoning
+    runWith ContentExtractor.extractText summarizePrompt maxChars maxParallelism details tickers maxDocuments disableReasoning
