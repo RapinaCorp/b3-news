@@ -8,13 +8,16 @@ open System.IO
 open Thoth.Json.Net
 
 let patternFnet =
-    "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento\\?id=([0-9]+)"
+    "https://fnet.bmfbovespa.com.br/fnet/publico/(?:visualizarDocumento|exibirDocumento)\\?id=([0-9]+)"
 
 let patternEnet =
     "https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
 
 let patternEnetNbc =
     "(https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmNBC.aspx\\?NSD=[0-9]+)"
+
+/// URLs já transformadas por getRealUrl (proxy local do Enet).
+let patternPdfProxy = @"(?:^|/)pdf/(\d+)\.pdf(?:$|\?)"
 
 /// URL do WebMethod que devolve o PDF (base64) — não depende do id, então fica fixa.
 let private enetApiUrl =
@@ -79,12 +82,15 @@ let classify (url: string) : Source =
     let fnetMatch = Regex.Match(url, patternFnet)
     let enetMatch = Regex.Match(url, patternEnet)
     let nbcMatch = Regex.Match(url, patternEnetNbc)
+    let pdfProxyMatch = Regex.Match(url, patternPdfProxy, RegexOptions.IgnoreCase)
     if fnetMatch.Success then
         Fnet(int fnetMatch.Groups.[1].Value)
     elif enetMatch.Success then
         Enet(int enetMatch.Groups.[1].Value)
     elif nbcMatch.Success then
         EnetNbc nbcMatch.Value
+    elif pdfProxyMatch.Success then
+        Enet(int pdfProxyMatch.Groups.[1].Value)
     else
         Unknown url
 

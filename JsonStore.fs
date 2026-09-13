@@ -6,7 +6,7 @@ open DetailsQuery
 
 let private options = JsonSerializerOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)
 
-let private tryRead path : Result<Details.NewsDetail list, string> =
+let tryRead path : Result<Details.NewsDetail list, string> =
     if File.Exists path then
         try File.ReadAllText path |> fun j -> JsonSerializer.Deserialize<Details.NewsDetail list>(j, options) |> Ok
         with :? JsonException as e -> Error $"JSON deserialization error: {e.Message}"
