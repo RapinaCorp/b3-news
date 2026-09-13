@@ -20,6 +20,7 @@
     <Compile Include="JsonStore.fs" />
     <Compile Include="NvidiaClient.fs" />
     <Compile Include="ContentExtractor.fs" />
+    <Compile Include="SummaryPipeline.fs" />
     <Compile Include="Api.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
