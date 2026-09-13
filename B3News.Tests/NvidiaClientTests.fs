@@ -11,6 +11,26 @@ let ``parseChatContent reads choices message content`` () =
     | Error err -> failwith err
 
 [<Fact>]
+let ``parseChatContent treats null content as empty response`` () =
+    // NVIDIA intermittently returns HTTP 200 with choices[0].message.content = null.
+    // This must decode as an empty (retryable) response, not a decode failure.
+    match NvidiaClient.parseChatContent """{"choices":[{"message":{"content":null}}]}""" with
+    | Error msg -> Assert.Equal("resposta NVIDIA vazia", msg)
+    | Ok _ -> failwith "expected error"
+
+[<Fact>]
+let ``parseChatContent treats blank content as empty response`` () =
+    match NvidiaClient.parseChatContent """{"choices":[{"message":{"content":"   "}}]}""" with
+    | Error msg -> Assert.Equal("resposta NVIDIA vazia", msg)
+    | Ok _ -> failwith "expected error"
+
+[<Fact>]
+let ``isTransientEmptyResponse marks only empty responses retryable`` () =
+    Assert.True(NvidiaClient.isTransientEmptyResponse "resposta NVIDIA vazia")
+    Assert.False(NvidiaClient.isTransientEmptyResponse "resposta NVIDIA sem choices")
+    Assert.False(NvidiaClient.isTransientEmptyResponse "resposta NVIDIA inválida: boom")
+
+[<Fact>]
 let ``parseChatContent fails on empty choices`` () =
     match NvidiaClient.parseChatContent """{"choices":[]}""" with
     | Error msg -> Assert.Contains("choices", msg)

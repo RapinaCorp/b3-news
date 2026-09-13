@@ -16,7 +16,13 @@ let defaultMaxTokens = 512
 
 type ChatMessage = { role: string; content: string }
 
-type private ChatChoiceMessage = { content: string }
+/// `content` is `string option` (not `string`) because the NVIDIA
+/// OpenAI-compatible API intermittently returns HTTP 200 with
+/// `choices[0].message.content = null` for a transient empty completion.
+/// With a plain `string` field, Thoth.Json fails the whole decode with
+/// "Expecting a string but instead got: null", failing an item that would
+/// succeed on retry. `None` is treated as an empty response below.
+type private ChatChoiceMessage = { content: string option }
 
 type private ChatChoice = { message: ChatChoiceMessage }
 
@@ -44,11 +50,16 @@ let parseChatContent (json: string) : Result<string, string> =
     | Error err -> Error(sprintf "resposta NVIDIA inválida: %s" err)
     | Ok resp when List.isEmpty resp.choices -> Error "resposta NVIDIA sem choices"
     | Ok resp ->
-        let text = resp.choices.Head.message.content
-        if String.IsNullOrWhiteSpace text then
-            Error "resposta NVIDIA vazia"
-        else
-            Ok(text.Trim())
+        match resp.choices.Head.message.content with
+        | None -> Error "resposta NVIDIA vazia"
+        | Some text when String.IsNullOrWhiteSpace text -> Error "resposta NVIDIA vazia"
+        | Some text -> Ok(text.Trim())
+
+/// True for parse failures that are worth retrying: the API returned HTTP 200
+/// but with no usable text (null/blank `content`). Malformed payloads
+/// ("inválida", "sem choices") indicate a contract problem, not a transient
+/// blip, so those fail fast.
+let isTransientEmptyResponse (err: string) : bool = err = "resposta NVIDIA vazia"
 
 let private encodeRequest (model: string) (systemPrompt: string) (content: string) : string =
     let messages =
@@ -129,6 +140,18 @@ let rec private postWithRetry
                             sw.ElapsedMilliseconds
                     )
                     return Ok text
+                | Error err when isTransientEmptyResponse err && attemptsLeft > 1 ->
+                    let delay = delayFor429 None attempt
+                    Log.warning (
+                        sprintf
+                            "NVIDIA resposta vazia (%s, %dms), retry em %dms (%d tentativas restantes)"
+                            label
+                            sw.ElapsedMilliseconds
+                            (int delay.TotalMilliseconds)
+                            (attemptsLeft - 1)
+                    )
+                    do! Async.Sleep(int delay.TotalMilliseconds)
+                    return! postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1)
                 | Error err ->
                     Log.warning (sprintf "NVIDIA parse falhou (%s, %dms): %s" label sw.ElapsedMilliseconds err)
                     return Error err
