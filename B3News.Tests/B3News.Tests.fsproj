@@ -16,6 +16,7 @@
     <Compile Include="NvidiaClientTests.fs" />
     <Compile Include="ContentExtractorTests.fs" />
     <Compile Include="SummaryPipelineTests.fs" />
+    <Compile Include="SummaryPageTests.fs" />
     <Compile Include="IntegrationTests.fs" />
   </ItemGroup>
 
