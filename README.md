@@ -24,19 +24,12 @@ B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notí
     cd B3News
     ```
 
-2.  **Gere o modelo de ML (necessário na primeira compilação):**
-    O projeto `B3News` incorpora o modelo `ML/data/B3NewsModel.zip` como recurso; a compilação falha se o arquivo não existir. Gere-o executando o projeto de ML uma vez:
-    ```bash
-    dotnet run --project ML
-    ```
-    > Observação: `ML/Program.fs` define qual modelo é gerado. Para o `B3NewsModel.zip`, mantenha `SingleLabel.run ()` ativo (o padrão é `MultiLabel.run ()`, que gera `B3MultiLabel.zip`).
-
-3.  **Compile o projeto:**
+2.  **Compile o projeto:**
     ```bash
     dotnet build
     ```
 
-4.  **Execute a aplicação:**
+3.  **Execute a aplicação:**
     Para ver as opções de linha de comando disponíveis, execute:
     ```bash
     dotnet run
@@ -111,17 +104,8 @@ A aplicação utiliza um arquivo `b3news.settings.json` para configurações. A 
 dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-## Roadmap
-
-* ~~Armazenar lista em um banco de dados (sqlite ou b-tree) => json~~
-* ~~[simple-pagination.js](https://gist.github.com/kottenator/9d936eb3e4e3c3e02598)~~
-* ~~[Persisting data report](https://chatgpt.com/share/6851e67e-a5b0-800d-bbfd-c9307e46b3a6)~~
-* ~~[Append unique data to JSON](https://chatgpt.com/share/6851e862-1888-800d-8a4c-ab93ed6ef6ce)~~
-
-
 ## REST tests
 
-* GET https://dummyjson.com/c/78db-003d-4189-a446
 * GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias?agencia=18&dataInicial=2025-06-04&datafinal=2025-06-04
 * GET https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail?idNoticia=2960041&agencia=18&dataNoticia=2025-06-04
 * GET http://localhost:8082/api/news?Codes=PETR,VALE&PageSize=5&Page=2&filename=mercado

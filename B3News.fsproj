@@ -11,31 +11,24 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Log.fs" />
-    <Compile Include="Predictions.fs" />
     <Compile Include="Download.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="Lib.fs" />
     <Compile Include="News.fs" />
-    <Compile Include="List.fs" />
     <Compile Include="Details.fs" />
     <Compile Include="DetailsQuery.fs" />
     <Compile Include="JsonStore.fs" />
-    <Compile Include="WebServer.fs" /><Compile Include="Api.fs" />
-
-    <Compile Include="Fix.fs" />
-    
+    <Compile Include="Api.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.6" />
+    <!-- Package 'Newtonsoft.Json' 11.0.2 had a known high severity vulnerability, not used
+    directly. https://github.com/advisories/GHSA-5crp-9r3c-p9vr -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Thoth.Json.Net" Version="11.0.0" />
-    <PackageReference Include="Microsoft.ML" Version="3.0.0-preview.22621.2" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="ML/data/B3NewsModel.zip" />
-    <EmbeddedResource Include="reports_template.html" />
   </ItemGroup>
 </Project>

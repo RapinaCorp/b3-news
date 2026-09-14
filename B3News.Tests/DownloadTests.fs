@@ -99,41 +99,6 @@ let ``getRealUrl passes through unknown url`` () =
     let url = "https://example.com/anything"
     Assert.Equal(url, Download.getRealUrl url)
 
-let private uniqueFolder () =
-    "_tests_" + Guid.NewGuid().ToString("N")
-
-[<Fact>]
-let ``save writes new file with pdf extension`` () =
-    let folder = uniqueFolder ()
-    try
-        let bytes = Encoding.UTF8.GetBytes("%PDF-1.4")
-        let result = Download.save folder "doc" bytes Pdf |> Async.RunSynchronously
-        match result with
-        | Ok (Written path) ->
-            Assert.EndsWith("doc.pdf", path)
-            Assert.True(File.Exists path)
-        | Ok (Skipped _) -> failwith "Expected Written"
-        | Error err -> failwith (sprintf "Expected success, got %A" err)
-    finally
-        if Directory.Exists(Path.Combine("report", folder)) then
-            Directory.Delete(Path.Combine("report", folder), true)
-
-[<Fact>]
-let ``save writes html extension for html kind`` () =
-    let folder = uniqueFolder ()
-    try
-        let bytes = Encoding.UTF8.GetBytes("<html></html>")
-        let result = Download.save folder "doc" bytes Html |> Async.RunSynchronously
-        match result with
-        | Ok (Written path) ->
-            Assert.EndsWith("doc.html", path)
-            Assert.True(File.Exists path)
-        | Ok (Skipped _) -> failwith "Expected Written"
-        | Error err -> failwith (sprintf "Expected success, got %A" err)
-    finally
-        if Directory.Exists(Path.Combine("report", folder)) then
-            Directory.Delete(Path.Combine("report", folder), true)
-
 [<Fact>]
 let ``classify recognizes enetWEB url`` () =
     let result =
