@@ -257,6 +257,14 @@
             min-height: 3rem;
             margin-top: 12px;
         }
+        #summaryModalBody ul.summary-bullets {
+            margin: 0;
+            padding-left: 20px;
+            list-style-type: disc;
+        }
+        #summaryModalBody ul.summary-bullets li {
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 
@@ -490,6 +498,51 @@
 
             var summaryCache = {}; // id -> texto do resumo, evita rebuscar na mesma sessão
 
+            // Quebra o resumo em frases sem partir abreviaturas ("S.A.", "etc.") — ES5.
+            // 1) divide em ponto + espaço + maiúscula/dígito (só lookahead);
+            // 2) rejunta fragmentos de abreviatura (letra isolada "S." ou etc./Ltda./Dr./Sr./Av.).
+            function splitSummarySentences(text) {
+                if (!text) return [];
+                var normalized = String(text).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                if (!normalized) return [];
+                var marked = normalized.replace(/\.\s+(?=["'"“”‘(\[]*[A-Z\u00C0-\u00DE0-9])/g, '.\n');
+                var raw = marked.split('\n');
+                var parts = [];
+                for (var k = 0; k < raw.length; k++) {
+                    var t = raw[k].replace(/^\s+|\s+$/g, '');
+                    if (t) parts.push(t);
+                }
+                var merged = [];
+                for (var i = 0; i < parts.length; i++) {
+                    var part = parts[i];
+                    var isAbbrev = /(?:^|\s)[A-Za-z]\.$/.test(part) ||
+                        /\b(etc|ltda|cia|dr|dra|sr|sra|av|art|ex|vs)\.$/i.test(part);
+                    if (isAbbrev && i + 1 < parts.length) {
+                        part = part + ' ' + parts[i + 1];
+                        i++;
+                    }
+                    merged.push(part);
+                }
+                return merged;
+            }
+
+            function renderSummaryBullets(body, text) {
+                body.innerHTML = '';
+                var sentences = splitSummarySentences(text);
+                if (sentences.length === 0) {
+                    body.textContent = text || '';
+                    return;
+                }
+                var ul = document.createElement('ul');
+                ul.className = 'summary-bullets';
+                for (var i = 0; i < sentences.length; i++) {
+                    var li = document.createElement('li');
+                    li.textContent = sentences[i];
+                    ul.appendChild(li);
+                }
+                body.appendChild(ul);
+            }
+
             function showSummaryModal() {
                 document.getElementById('summaryModal').style.display = 'block';
             }
@@ -520,7 +573,7 @@
                 showSummaryModal();
 
                 if (summaryCache[id]) {
-                    body.textContent = summaryCache[id];
+                    renderSummaryBullets(body, summaryCache[id]);
                     return;
                 }
 
@@ -532,7 +585,7 @@
                         if (xhr.status === 200) {
                             var data = JSON.parse(xhr.responseText);
                             summaryCache[id] = data.summary;
-                            body.textContent = data.summary;
+                            renderSummaryBullets(body, data.summary);
                         } else {
                             var errMsg = 'Falha ao gerar o resumo.';
                             try {

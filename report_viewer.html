@@ -366,6 +366,46 @@
             // --- SUMMARY POPUP ---
             const summaryCache = {}; // id -> texto do resumo, evita rebuscar na mesma sessão
 
+            // Quebra o resumo em frases sem partir abreviaturas ("S.A.", "etc."):
+            // 1) divide em ponto + espaço + maiúscula/dígito (lookahead, sem lookbehind);
+            // 2) rejunta fragmentos de abreviatura (letra isolada "S." ou etc./Ltda./Dr./Sr./Av.).
+            function splitSummarySentences(text) {
+                if (!text) return [];
+                const normalized = String(text).replace(/\s+/g, ' ').trim();
+                if (!normalized) return [];
+                const marked = normalized.replace(/\.\s+(?=["'“”‘(\[]*[A-Z\u00C0-\u00DE0-9])/g, '.\n');
+                const parts = marked.split('\n').map(s => s.trim()).filter(Boolean);
+                const merged = [];
+                for (let i = 0; i < parts.length; i++) {
+                    let part = parts[i];
+                    const isAbbreviation = /(?:^|\s)[A-Za-z]\.$/.test(part) ||
+                        /\b(etc|ltda|cia|dr|dra|sr|sra|av|art|ex|vs|e\.g|i\.e)\.$/i.test(part);
+                    if (isAbbreviation && i + 1 < parts.length) {
+                        part = part + ' ' + parts[i + 1];
+                        i++;
+                    }
+                    merged.push(part);
+                }
+                return merged;
+            }
+
+            function renderSummaryBullets(body, text) {
+                body.innerHTML = '';
+                const sentences = splitSummarySentences(text);
+                if (sentences.length === 0) {
+                    body.textContent = text || '';
+                    return;
+                }
+                const ul = document.createElement('ul');
+                ul.className = 'list-disc pl-5 space-y-1';
+                sentences.forEach(s => {
+                    const li = document.createElement('li');
+                    li.textContent = s;
+                    ul.appendChild(li);
+                });
+                body.appendChild(ul);
+            }
+
             function showSummaryError(message) {
                 const body = document.getElementById('summaryModalBody');
                 body.innerHTML = '';
@@ -390,7 +430,7 @@
                 modal.classList.remove('hidden');
 
                 if (summaryCache[id]) {
-                    body.textContent = summaryCache[id];
+                    renderSummaryBullets(body, summaryCache[id]);
                     return;
                 }
 
@@ -404,7 +444,7 @@
                     }
                     const data = await resp.json();
                     summaryCache[id] = data.summary;
-                    body.textContent = data.summary;
+                    renderSummaryBullets(body, data.summary);
                 } catch (e) {
                     showSummaryError('Erro de conexão ao gerar o resumo.');
                 }
