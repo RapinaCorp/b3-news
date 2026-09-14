@@ -2,10 +2,9 @@
   <PropertyGroup>
     <RootNamespace>B3News</RootNamespace>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <_RuntimeIdentifier>linux-x64</_RuntimeIdentifier>
     <PublishAot>false</PublishAot>
     <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
   </PropertyGroup>
@@ -26,7 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.6" />
     <!-- Package 'Newtonsoft.Json' 11.0.2 had a known high severity vulnerability, not used
     directly. https://github.com/advisories/GHSA-5crp-9r3c-p9vr -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
