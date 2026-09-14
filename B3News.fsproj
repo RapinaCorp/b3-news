@@ -34,4 +34,8 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="report_viewer.html" />
+    <EmbeddedResource Include="report_viewer_legacy.html" />
+  </ItemGroup>
 </Project>

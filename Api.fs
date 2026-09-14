@@ -244,20 +244,30 @@ let handleGetSummary (ctx: HttpContext) : Task =
                                 do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
     }
 
-let handleHtmlFile (filePath: string) (ctx: HttpContext) : Task =
+let private embeddedHtml: Map<string, string> =
+    let asm = System.Reflection.Assembly.GetExecutingAssembly()
+
+    [ "report_viewer.html"; "report_viewer_legacy.html" ]
+    |> List.map (fun name ->
+        use stream = asm.GetManifestResourceStream($"B3News.{name}")
+
+        match stream with
+        | null -> failwithf "Embedded resource 'B3News.%s' not found" name
+        | s ->
+            use reader = new System.IO.StreamReader(s)
+            name, reader.ReadToEnd())
+    |> Map.ofList
+
+let handleHtmlFile (resourceName: string) (ctx: HttpContext) : Task =
     task {
-        try
-            if System.IO.File.Exists(filePath) then
-                ctx.Response.StatusCode <- 200
-                ctx.Response.ContentType <- "text/html; charset=utf-8"
-                let! html = System.IO.File.ReadAllTextAsync(filePath)
-                do! ctx.Response.WriteAsync(html)
-            else
-                ctx.Response.StatusCode <- 404
-                do! ctx.Response.WriteAsync($"""{filePath} not found""")
-        with ex ->
-            ctx.Response.StatusCode <- 500
-            do! ctx.Response.WriteAsync($"Internal server error: {ex.Message}")
+        match Map.tryFind resourceName embeddedHtml with
+        | Some html ->
+            ctx.Response.StatusCode <- 200
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync(html)
+        | None ->
+            ctx.Response.StatusCode <- 404
+            do! ctx.Response.WriteAsync($"'{resourceName}' not found")
     }
 
 let configureRoutes (app: WebApplication) memoryCache =
