@@ -49,8 +49,8 @@ Os próximos arquivos (`01` a `05`) descrevem cada etapa em detalhe, na ordem
 em que devem ser implementadas. Cada etapa deve compilar e ter um teste manual
 ou automatizado antes de seguir para a próxima.
 
-1. `2026-09-12-01-cliente-nvidia.md` — cliente HTTP para a API da NVIDIA
-2. `2026-09-12-02-extracao-conteudo.md` — extração de texto de HTML e PDF
-3. `2026-09-12-03-pipeline-sumarizacao.md` — orquestração do resumo por documento e por ativo
-4. `2026-09-12-04-geracao-pagina.md` — geração da página final
-5. `2026-09-12-05-configuracao-integracao.md` — configuração, seleção de ativos, wiring no CLI/app existente
+1. `01-cliente-nvidia.md` — cliente HTTP para a API da NVIDIA
+2. `02-extracao-conteudo.md` — extração de texto de HTML e PDF
+3. `03-pipeline-sumarizacao.md` — orquestração do resumo por documento e por ativo
+4. `04-geracao-pagina.md` — geração da página final
+5. `05-configuracao-integracao.md` — configuração, seleção de ativos, wiring no CLI/app existente
