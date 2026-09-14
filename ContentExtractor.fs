@@ -135,6 +135,11 @@ let extractText (url: string) (maxChars: int) : Async<Result<ExtractedContent, s
             match fetched with
             | Error err -> return Error err
             | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
+        | Fnet _ ->
+            let! fetched = fetchGeneric url
+            match fetched with
+            | Error err -> return Error err
+            | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
         | source ->
             let! fetched = fetchBytes source
             match fetched with
