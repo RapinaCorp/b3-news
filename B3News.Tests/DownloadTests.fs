@@ -100,6 +100,18 @@ let ``getRealUrl passes through unknown url`` () =
     Assert.Equal(url, Download.getRealUrl url)
 
 [<Fact>]
+let ``classify recognizes fnet exibirDocumento url`` () =
+    match Download.classify "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=123" with
+    | Fnet id -> Assert.Equal(123, id)
+    | _ -> failwith "Expected Fnet"
+
+[<Fact>]
+let ``classify recognizes local pdf proxy url`` () =
+    match Download.classify "/pdf/456.pdf" with
+    | Enet id -> Assert.Equal(456, id)
+    | _ -> failwith "Expected Enet"
+
+[<Fact>]
 let ``classify recognizes enetWEB url`` () =
     let result =
         Download.classify "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx?ID=456"

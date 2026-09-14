@@ -145,14 +145,137 @@
         .hide {
             display: none;
         }
+
+        /* --- DARK THEME (toggled via `dark` class on <html>) --- */
+        html.dark body {
+            background-color: #1a1a1a;
+            color: #ddd;
+        }
+        html.dark #app {
+            background-color: #222;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        html.dark header {
+            border-bottom-color: #444;
+        }
+        html.dark h1 {
+            color: #eee;
+        }
+        html.dark #config-area {
+            border-color: #555;
+        }
+        html.dark #config-area input,
+        html.dark th input {
+            background-color: #333;
+            color: #eee;
+            border-color: #555;
+        }
+        html.dark #loading-indicator {
+            color: #66aaff;
+        }
+        html.dark th,
+        html.dark td {
+            border-bottom-color: #444;
+        }
+        html.dark th {
+            background-color: #2a2a2a;
+        }
+        html.dark tbody tr:hover {
+            background-color: #333;
+        }
+        html.dark a {
+            color: #66aaff;
+        }
+        html.dark #pagination-controls button {
+            background-color: #333;
+            border-color: #555;
+            color: #ddd;
+        }
+        html.dark #pagination-controls button.active {
+            background-color: #0066cc;
+            border-color: #0066cc;
+            color: #fff;
+        }
+        html.dark #pagination-controls button:disabled {
+            color: #777;
+        }
+        html.dark #summaryModal .box {
+            background: #222;
+            border-color: #555;
+        }
+        html.dark #summaryModalTitle {
+            color: #eee;
+        }
+        html.dark #summaryModalBody {
+            color: #ddd;
+        }
+        html.dark .summary-btn {
+            color: #999;
+        }
+        html.dark .summary-btn:hover {
+            color: #66aaff;
+        }
+        .summary-error {
+            color: #c00;
+        }
+        html.dark .summary-error {
+            color: #ff8080;
+        }
+
+        .summary-btn {
+            margin-left: 4px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #888;
+        }
+        .summary-btn:hover {
+            color: #06c;
+        }
+        #summaryModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 50;
+        }
+        #summaryModal .box {
+            background: #fff;
+            width: 440px;
+            max-width: 90%;
+            margin: 60px auto;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        #summaryModalBody {
+            white-space: pre-line;
+            font-size: 14px;
+            min-height: 3rem;
+            margin-top: 12px;
+        }
+        #summaryModalBody ul.summary-bullets {
+            margin: 0;
+            padding-left: 20px;
+            list-style-type: disc;
+        }
+        #summaryModalBody ul.summary-bullets li {
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 
 <body>
 
     <div id="app">
-        <header>
-            <h1>Relatórios de Empresas e FIIs</h1>
+        <header style="overflow:hidden;">
+            <h1 style="float:left;">Relatórios de Empresas e FIIs</h1>
+            <button id="themeToggle" title="Alternar tema claro/escuro" style="float:right; cursor:pointer;">
+                <span id="moonIcon">🌙</span><span id="sunIcon" style="display:none;">☀️</span>
+            </button>
         </header>
 
         <div id="config-area" class="hide">
@@ -183,6 +306,16 @@
         </div>
 
         <div id="pagination-controls"></div>
+
+        <div id="summaryModal" class="hide">
+            <div class="box">
+                <div style="overflow:hidden;">
+                    <h3 id="summaryModalTitle" style="float:left; margin:0;"></h3>
+                    <button id="summaryModalClose" aria-label="Fechar" style="float:right;">✕</button>
+                </div>
+                <div id="summaryModalBody"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -195,7 +328,8 @@
             var constants = {
                 API_BASE_URL: '/api/news',
                 DEBOUNCE_DELAY: 600,
-                LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy'
+                LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy',
+                THEME_STORAGE_KEY: 'reportViewerThemeLegacy'
             };
 
             // --- STATE MANAGEMENT ---
@@ -342,6 +476,16 @@
                     typeLink.target = '_blank';
                     typeLink.textContent = report.reportType || 'N/A';
                     typeCell.appendChild(typeLink);
+
+                    var summaryBtn = document.createElement('button');
+                    summaryBtn.textContent = '▾';
+                    summaryBtn.title = 'Ver resumo do comunicado';
+                    summaryBtn.className = 'summary-btn';
+                    summaryBtn.onclick = (function (id, title) {
+                        return function () { openSummaryPopup(id, title); };
+                    })(report.id, report.reportType);
+                    typeCell.appendChild(summaryBtn);
+
                     row.appendChild(typeCell);
 
                     var dateCell = document.createElement('td');
@@ -350,6 +494,109 @@
 
                     elements.tableBody.appendChild(row);
                 }
+            }
+
+            var summaryCache = {}; // id -> texto do resumo, evita rebuscar na mesma sessão
+
+            // Quebra o resumo em frases sem partir abreviaturas ("S.A.", "etc.") — ES5.
+            // 1) divide em ponto + espaço + maiúscula/dígito (só lookahead);
+            // 2) rejunta fragmentos de abreviatura (letra isolada "S." ou etc./Ltda./Dr./Sr./Av.).
+            function splitSummarySentences(text) {
+                if (!text) return [];
+                var normalized = String(text).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                if (!normalized) return [];
+                var marked = normalized.replace(/\.\s+(?=["'"“”‘(\[]*[A-Z\u00C0-\u00DE0-9])/g, '.\n');
+                var raw = marked.split('\n');
+                var parts = [];
+                for (var k = 0; k < raw.length; k++) {
+                    var t = raw[k].replace(/^\s+|\s+$/g, '');
+                    if (t) parts.push(t);
+                }
+                var merged = [];
+                for (var i = 0; i < parts.length; i++) {
+                    var part = parts[i];
+                    var isAbbrev = /(?:^|\s)[A-Za-z]\.$/.test(part) ||
+                        /\b(etc|ltda|cia|dr|dra|sr|sra|av|art|ex|vs)\.$/i.test(part);
+                    if (isAbbrev && i + 1 < parts.length) {
+                        part = part + ' ' + parts[i + 1];
+                        i++;
+                    }
+                    merged.push(part);
+                }
+                return merged;
+            }
+
+            function renderSummaryBullets(body, text) {
+                body.innerHTML = '';
+                var sentences = splitSummarySentences(text);
+                if (sentences.length === 0) {
+                    body.textContent = text || '';
+                    return;
+                }
+                var ul = document.createElement('ul');
+                ul.className = 'summary-bullets';
+                for (var i = 0; i < sentences.length; i++) {
+                    var li = document.createElement('li');
+                    li.textContent = sentences[i];
+                    ul.appendChild(li);
+                }
+                body.appendChild(ul);
+            }
+
+            function showSummaryModal() {
+                document.getElementById('summaryModal').style.display = 'block';
+            }
+
+            function hideSummaryModal() {
+                document.getElementById('summaryModal').style.display = 'none';
+            }
+
+            function showSummaryError(message, id, title) {
+                var body = document.getElementById('summaryModalBody');
+                body.innerHTML = '';
+                var msg = document.createElement('span');
+                msg.className = 'summary-error';
+                msg.textContent = message;
+                var retry = document.createElement('button');
+                retry.textContent = 'Tentar de novo';
+                retry.style.display = 'block';
+                retry.style.marginTop = '8px';
+                retry.onclick = function () { openSummaryPopup(id, title); };
+                body.appendChild(msg);
+                body.appendChild(retry);
+            }
+
+            function openSummaryPopup(id, title) {
+                var modal = document.getElementById('summaryModal');
+                var body = document.getElementById('summaryModalBody');
+                document.getElementById('summaryModalTitle').textContent = title || 'Resumo';
+                showSummaryModal();
+
+                if (summaryCache[id]) {
+                    renderSummaryBullets(body, summaryCache[id]);
+                    return;
+                }
+
+                body.textContent = 'Gerando resumo…';
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/news/' + id + '/summary', true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            var data = JSON.parse(xhr.responseText);
+                            summaryCache[id] = data.summary;
+                            renderSummaryBullets(body, data.summary);
+                        } else {
+                            var errMsg = 'Falha ao gerar o resumo.';
+                            try {
+                                var err = JSON.parse(xhr.responseText);
+                                if (err.error) errMsg = 'Não foi possível gerar o resumo: ' + err.error;
+                            } catch (parseErr) {}
+                            showSummaryError(errMsg, id, title);
+                        }
+                    }
+                };
+                xhr.send();
             }
 
             function renderPaginationControls() {
@@ -479,6 +726,7 @@
             // --- INITIALIZATION ---
             function init() {
                 loadConfig();
+                initializeTheme();
                 updateSortIcons();
                 fetchData(true);
 
@@ -501,6 +749,55 @@
                 document.getElementById('filter-input-0').addEventListener('input', handleFilterChange);
                 document.getElementById('filter-input-1').addEventListener('input', handleFilterChange);
                 document.getElementById('filter-input-2').addEventListener('input', handleFilterChange);
+
+                document.getElementById('summaryModalClose').addEventListener('click', function () {
+                    hideSummaryModal();
+                });
+                document.getElementById('summaryModal').addEventListener('click', function (e) {
+                    if ((e.target || e.srcElement).id === 'summaryModal') hideSummaryModal();
+                });
+                document.addEventListener('keydown', function (e) {
+                    var key = e.keyCode || e.which;
+                    if (key === 27) hideSummaryModal();
+                });
+
+                document.getElementById('themeToggle').addEventListener('click', function () {
+                    setDarkTheme(!isDarkTheme());
+                    try {
+                        localStorage.setItem(constants.THEME_STORAGE_KEY, isDarkTheme() ? 'dark' : 'light');
+                    } catch (themeSaveErr) {}
+                });
+            }
+
+            function isDarkTheme() {
+                var classes = (' ' + document.documentElement.className + ' ').replace(/[\t\r\n]/g, ' ');
+                return classes.indexOf(' dark ') >= 0;
+            }
+
+            function setDarkTheme(on) {
+                var root = document.documentElement;
+                var classes = (' ' + root.className + ' ').replace(/[\t\r\n]/g, ' ');
+                if (on) {
+                    if (classes.indexOf(' dark ') < 0) root.className = (root.className + ' dark').replace(/^\s+/, '');
+                } else {
+                    root.className = classes.replace(/ dark /g, ' ').replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+                }
+                document.getElementById('moonIcon').style.display = on ? 'none' : '';
+                document.getElementById('sunIcon').style.display = on ? '' : 'none';
+            }
+
+            function initializeTheme() {
+                var saved = null;
+                try {
+                    saved = localStorage.getItem(constants.THEME_STORAGE_KEY);
+                } catch (themeLoadErr) {}
+                var prefersDark = false;
+                if (window.matchMedia) {
+                    try {
+                        prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    } catch (matchMediaErr) {}
+                }
+                setDarkTheme(saved === 'dark' || (saved !== 'light' && prefersDark));
             }
 
             init();

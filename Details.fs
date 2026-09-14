@@ -17,7 +17,8 @@ type NewsDetail =
       dateTime: string
       filename: string
       reportType: string
-      url: string }
+      url: string
+      summary: string }
 
 let detailsCacheDir = "news_cache"
 
@@ -160,7 +161,8 @@ let nwsMsgToNewsDetail (nwsmsg: News.NwsMsg) : Async<Result<NewsDetail, string>>
                           dateTime = ndateTime
                           filename = filename
                           reportType = getReportTitle nwsmsg.headline
-                          url = url }
+                          url = url
+                          summary = "" }
                     )
     }
 

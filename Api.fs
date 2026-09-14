@@ -198,6 +198,52 @@ let handlePdfRequest (ctx: HttpContext) : Task =
                 return ()
     }
 
+let handleGetSummary (ctx: HttpContext) : Task =
+    task {
+        let idStr = ctx.Request.RouteValues["id"] :?> string
+        match System.Int32.TryParse idStr with
+        | false, _ ->
+            do! writeErrorResponse ctx HttpStatusCode.BadRequest "ID inválido"
+        | true, id ->
+            match JsonStore.tryRead Config.reportsJson with
+            | Error err ->
+                do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
+            | Ok details ->
+                match details |> List.tryFind (fun d -> d.id = id) with
+                | None ->
+                    do! writeErrorResponse ctx HttpStatusCode.NotFound "Comunicado não encontrado"
+                | Some detail when not (System.String.IsNullOrWhiteSpace detail.summary) ->
+                    do! writeJsonResponse ctx HttpStatusCode.OK {| summary = detail.summary |}
+                | Some detail ->
+                    match Config.nvidiaApiKey () with
+                    | Error err ->
+                        do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
+                    | Ok apiKey ->
+                        let settings = Config.readSummarySettings ()
+                        let! result =
+                            NewsSummary.summarizeDetail
+                                apiKey
+                                settings.Model
+                                settings.MaxRetries
+                                settings.MaxChars
+                                settings.DisableReasoning
+                                detail
+                            |> Async.StartAsTask
+                        match result with
+                        | Error err ->
+                            do! writeErrorResponse ctx HttpStatusCode.BadGateway err
+                        | Ok summary ->
+                            match JsonStore.updateSummary Config.reportsJson id summary with
+                            | Error err ->
+                                Log.warning (sprintf "falha ao salvar resumo [id=%d]: %s" id err)
+                                // Ainda assim retorna o resumo gerado ao usuário,
+                                // mesmo que a escrita em disco tenha falhado —
+                                // só não fica cacheado para a próxima vez.
+                                do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
+                            | Ok () ->
+                                do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
+    }
+
 let handleHtmlFile (filePath: string) (ctx: HttpContext) : Task =
     task {
         try
@@ -219,6 +265,7 @@ let configureRoutes (app: WebApplication) memoryCache =
         app.MapGet("/pdf/{id}.pdf", handlePdfRequest) |> ignore
         app.MapGet("/api/news/count", handleNumberOfReports memoryCache) |> ignore
         app.MapGet("/api/news", handleLoadPagedNews) |> ignore
+        app.MapGet("/api/news/{id}/summary", handleGetSummary) |> ignore
         app.MapGet("/legacy", handleHtmlFile "report_viewer_legacy.html") |> ignore
         app.MapGet("/", handleHtmlFile "report_viewer.html") |> ignore
 

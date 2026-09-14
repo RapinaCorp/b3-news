@@ -24,12 +24,18 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600&display=swap" rel="stylesheet">
 
     <style>
         body {
             font-family: 'Inter', sans-serif;
             transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        h1 {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 600;
         }
 
         /* Custom scrollbar for dark mode */
@@ -155,6 +161,18 @@
                 <button id="saveReloadConfigBtn"
                     class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200">Salvar
                     e Recarregar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="summaryModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 max-w-lg w-full space-y-4">
+            <div class="flex items-start justify-between gap-4">
+                <h3 id="summaryModalTitle" class="text-lg font-semibold text-gray-800 dark:text-gray-100"></h3>
+                <button id="summaryModalClose" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    aria-label="Fechar">✕</button>
+            </div>
+            <div id="summaryModalBody" class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line min-h-[3rem]">
             </div>
         </div>
     </div>
@@ -345,6 +363,92 @@
                 }
             }
 
+            // --- SUMMARY POPUP ---
+            const summaryCache = {}; // id -> texto do resumo, evita rebuscar na mesma sessão
+
+            // Quebra o resumo em frases sem partir abreviaturas ("S.A.", "etc."):
+            // 1) divide em ponto + espaço + maiúscula/dígito (lookahead, sem lookbehind);
+            // 2) rejunta fragmentos de abreviatura (letra isolada "S." ou etc./Ltda./Dr./Sr./Av.).
+            function splitSummarySentences(text) {
+                if (!text) return [];
+                const normalized = String(text).replace(/\s+/g, ' ').trim();
+                if (!normalized) return [];
+                const marked = normalized.replace(/\.\s+(?=["'“”‘(\[]*[A-Z\u00C0-\u00DE0-9])/g, '.\n');
+                const parts = marked.split('\n').map(s => s.trim()).filter(Boolean);
+                const merged = [];
+                for (let i = 0; i < parts.length; i++) {
+                    let part = parts[i];
+                    const isAbbreviation = /(?:^|\s)[A-Za-z]\.$/.test(part) ||
+                        /\b(etc|ltda|cia|dr|dra|sr|sra|av|art|ex|vs|e\.g|i\.e)\.$/i.test(part);
+                    if (isAbbreviation && i + 1 < parts.length) {
+                        part = part + ' ' + parts[i + 1];
+                        i++;
+                    }
+                    merged.push(part);
+                }
+                return merged;
+            }
+
+            function renderSummaryBullets(body, text) {
+                body.innerHTML = '';
+                const sentences = splitSummarySentences(text);
+                if (sentences.length === 0) {
+                    body.textContent = text || '';
+                    return;
+                }
+                const ul = document.createElement('ul');
+                ul.className = 'list-disc pl-5 space-y-1';
+                sentences.forEach(s => {
+                    const li = document.createElement('li');
+                    li.textContent = s;
+                    ul.appendChild(li);
+                });
+                body.appendChild(ul);
+            }
+
+            function showSummaryError(message) {
+                const body = document.getElementById('summaryModalBody');
+                body.innerHTML = '';
+                const err = document.createElement('span');
+                err.className = 'text-red-600 dark:text-red-400';
+                err.textContent = message;
+                const retry = document.createElement('button');
+                retry.id = 'summaryRetryBtn';
+                retry.className = 'block mt-2 text-blue-600 dark:text-blue-400 hover:underline';
+                retry.textContent = 'Tentar de novo';
+                retry.addEventListener('click', () => openSummaryPopup(body.dataset.summaryId, body.dataset.summaryTitle));
+                body.appendChild(err);
+                body.appendChild(retry);
+            }
+
+            async function openSummaryPopup(id, title) {
+                const modal = document.getElementById('summaryModal');
+                const body = document.getElementById('summaryModalBody');
+                document.getElementById('summaryModalTitle').textContent = title || 'Resumo';
+                body.dataset.summaryId = id;
+                body.dataset.summaryTitle = title || 'Resumo';
+                modal.classList.remove('hidden');
+
+                if (summaryCache[id]) {
+                    renderSummaryBullets(body, summaryCache[id]);
+                    return;
+                }
+
+                body.innerHTML = '<span class="text-gray-400">Gerando resumo…</span>';
+                try {
+                    const resp = await fetch(`/api/news/${id}/summary`);
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({}));
+                        showSummaryError(`Não foi possível gerar o resumo${err.error ? ': ' + err.error : ''}.`);
+                        return;
+                    }
+                    const data = await resp.json();
+                    summaryCache[id] = data.summary;
+                    renderSummaryBullets(body, data.summary);
+                } catch (e) {
+                    showSummaryError('Erro de conexão ao gerar o resumo.');
+                }
+            }
 
             // --- UI RENDERING & MANIPULATION ---
             function showLoading() {
@@ -386,6 +490,15 @@
                     typeLink.className = 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 visited:text-purple-600';
                     typeLink.textContent = report.reportType || 'N/A';
                     typeCell.appendChild(typeLink);
+
+                    const summaryBtn = document.createElement('button');
+                    summaryBtn.textContent = '▾';
+                    summaryBtn.title = 'Ver resumo do comunicado';
+                    summaryBtn.setAttribute('aria-label', 'Ver resumo do comunicado');
+                    summaryBtn.className = 'ml-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none';
+                    summaryBtn.addEventListener('click', () => openSummaryPopup(report.id, report.reportType));
+                    typeCell.appendChild(summaryBtn);
+
                     row.appendChild(typeCell);
 
                     const dateCell = document.createElement('td');
@@ -655,6 +768,15 @@
                 });
 
                 elements.updateIndicator.addEventListener('click', () => fetchData(true));
+                document.getElementById('summaryModalClose').addEventListener('click', () => {
+                    document.getElementById('summaryModal').classList.add('hidden');
+                });
+                document.getElementById('summaryModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'summaryModal') e.target.classList.add('hidden');
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') document.getElementById('summaryModal').classList.add('hidden');
+                });
                 window.addEventListener('focus', () => {
                     if (state.config.intervalForNewReports === null) {
                         state.config.intervalForNewReports = setInterval(checkForNewReports, constants.NEW_REPORT_CHECK_INTERVAL);
