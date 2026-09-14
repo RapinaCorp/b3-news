@@ -123,6 +123,7 @@ let private fetchGeneric (url: string) : Async<Result<byte[] * Kind, string>> =
 /// Baixa o comunicado (reusa Download.fetchBytes para Fnet/Enet) e devolve texto plano truncado.
 let extractText (url: string) (maxChars: int) : Async<Result<ExtractedContent, string>> =
     async {
+        printfn "  - extraindo %s" url
         match classify url with
         | Unknown u ->
             let! fetched = fetchGeneric u

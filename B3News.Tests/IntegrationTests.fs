@@ -35,7 +35,8 @@ let ``Simulate pagination and data update flow`` () =
                     dateTime = sprintf "2024-01-01 10:00:0%d" i
                     reportType = "Fato Relevante"
                     filename = sprintf "file%d.pdf" i
-                    url = sprintf "http://example.com/%d" i } ]
+                    url = sprintf "http://example.com/%d" i
+                    summary = "" } ]
         let initialJson = JsonSerializer.Serialize(initialNews)
         File.WriteAllText(reportsJsonPath, initialJson)
 
@@ -113,7 +114,8 @@ let ``Simulate pagination and data update flow`` () =
                     dateTime = sprintf "2024-01-02 11:00:0%d" i
                     reportType = "Aviso"
                     filename = sprintf "file%d.pdf" i
-                    url = sprintf "http://example.com/%d" i } ]
+                    url = sprintf "http://example.com/%d" i
+                    summary = "" } ]
         let allNews = initialNews @ newNews
         let updatedJson = JsonSerializer.Serialize(allNews)
         File.WriteAllText(reportsJsonPath, updatedJson)
