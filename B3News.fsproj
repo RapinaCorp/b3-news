@@ -2,10 +2,10 @@
   <PropertyGroup>
     <RootNamespace>B3News</RootNamespace>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <_RuntimeIdentifier>linux-x64</_RuntimeIdentifier>
     <PublishAot>false</PublishAot>
     <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
   </PropertyGroup>
@@ -20,8 +20,6 @@
     <Compile Include="JsonStore.fs" />
     <Compile Include="NvidiaClient.fs" />
     <Compile Include="ContentExtractor.fs" />
-    <Compile Include="SummaryPipeline.fs" />
-    <Compile Include="SummaryPage.fs" />
     <Compile Include="Api.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

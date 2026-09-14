@@ -12,20 +12,14 @@ let (+/) path1 path2 = Path.Combine(path1, path2)
 
 type SummarySettings =
     { Model: string
-      MaxDocuments: int
       MaxChars: int
-      MaxParallelism: int
       MaxRetries: int
-      OutputFile: string
       DisableReasoning: bool }
 
 let defaultSummarySettings =
     { Model = "meta/llama-3.3-70b-instruct"
-      MaxDocuments = 5
       MaxChars = 7000
-      MaxParallelism = 6
       MaxRetries = 5
-      OutputFile = "summaries.html"
       DisableReasoning = false }
 
 let private tryReadInt (el: JsonElement) (name: string) =
@@ -51,11 +45,8 @@ let private tryReadBool (el: JsonElement) (name: string) =
 
 let private mergeSummary (base': SummarySettings) (el: JsonElement) =
     { Model = tryReadString el "Model" |> Option.defaultValue base'.Model
-      MaxDocuments = tryReadInt el "MaxDocuments" |> Option.defaultValue base'.MaxDocuments
       MaxChars = tryReadInt el "MaxChars" |> Option.defaultValue base'.MaxChars
-      MaxParallelism = tryReadInt el "MaxParallelism" |> Option.defaultValue base'.MaxParallelism
       MaxRetries = tryReadInt el "MaxRetries" |> Option.defaultValue base'.MaxRetries
-      OutputFile = tryReadString el "OutputFile" |> Option.defaultValue base'.OutputFile
       DisableReasoning = tryReadBool el "DisableReasoning" |> Option.defaultValue base'.DisableReasoning }
 
 let private loadSettingsDoc () : JsonDocument option =

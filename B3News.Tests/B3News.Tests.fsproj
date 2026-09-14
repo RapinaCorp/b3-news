@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>B3News.Tests</RootNamespace>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
 
     <IsPackable>false</IsPackable>
     <GenerateProgramFile>false</GenerateProgramFile>
@@ -15,8 +15,6 @@
     <Compile Include="DownloadTests.fs" />
     <Compile Include="NvidiaClientTests.fs" />
     <Compile Include="ContentExtractorTests.fs" />
-    <Compile Include="SummaryPipelineTests.fs" />
-    <Compile Include="SummaryPageTests.fs" />
     <Compile Include="IntegrationTests.fs" />
   </ItemGroup>
 

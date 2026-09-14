@@ -11,7 +11,6 @@ let usage () =
     printfn ""
     printfn "Comandos disponíveis:"
     printfn "  update-json <data1> [<data2>]   Atualiza relatórios JSON"
-    printfn "  summarize [<data>]              Gera a página de resumos via NVIDIA"
     printfn "  serve-api [opções]              Inicia o servidor de API JSON"
     printfn ""
     printfn "  help                            Mostra esta mensagem de ajuda"
@@ -46,86 +45,6 @@ let updateJson (args: string array) =
         Log.error <| sprintf "x Erro (updateJson): %s" err
         1
 
-let summarize (args: string array) =
-    if args.Length > 1 then
-        usage ()
-    let dateFilter =
-        if args.Length = 1 then
-            if not (isDateFormat args.[0]) then
-                usage ()
-            Some args.[0]
-        else
-            None
-    match Config.nvidiaApiKey () with
-    | Error err ->
-        Log.error <| sprintf "x %s" err
-        1
-    | Ok apiKey ->
-        let settings = Config.readSummarySettings ()
-        let tickers = Config.readTickersFromFile ()
-        if List.isEmpty tickers then
-            Log.error "x Nenhum ticker em b3news.settings.json (Tickers)."
-            1
-        else
-            match JsonStore.tryRead Config.reportsJson with
-            | Error err ->
-                Log.error <| sprintf "x Erro ao ler %s: %s" Config.reportsJson err
-                1
-            | Ok [] ->
-                Log.error <| sprintf "x %s está vazio. Rode update-json antes." Config.reportsJson
-                1
-            | Ok details ->
-                match dateFilter with
-                | Some date ->
-                    let selected = SummaryPipeline.selectDocumentsByDate details tickers date
-                    if List.isEmpty selected then
-                        Log.error <| sprintf "x Nenhum comunicado encontrado para %s." date
-                        1
-                    else
-                        printfn "- Resumindo comunicados de %s de:" date
-                        printfn "  %A" (selected |> List.map fst)
-                        printfn "  modelo=%s paralelismo=%d maxChars=%d" settings.Model settings.MaxParallelism settings.MaxChars
-                        let task =
-                            SummaryPipeline.runForDate
-                                apiKey
-                                settings.Model
-                                settings.MaxRetries
-                                settings.MaxChars
-                                settings.MaxParallelism
-                                details
-                                tickers
-                                date
-                                settings.DisableReasoning
-                        let ativos = Async.RunSynchronously task
-                        let path = SummaryPage.writeToFile settings.OutputFile DateTime.Now ativos
-                        let okCount = ativos |> List.sumBy (fun a -> a.Comunicados.Length)
-                        let failCount = ativos |> List.sumBy (fun a -> a.Falhas)
-                        Log.notice
-                        <| sprintf "- Página gerada: %s (%d resumos, %d falhas, %d ativos)." path okCount failCount ativos.Length
-                        0
-                | None ->
-                    printfn "- Resumindo últimos %d comunicados de:" settings.MaxDocuments
-                    printfn "  %A" tickers
-                    printfn "  modelo=%s paralelismo=%d maxChars=%d" settings.Model settings.MaxParallelism settings.MaxChars
-                    let task =
-                        SummaryPipeline.run
-                            apiKey
-                            settings.Model
-                            settings.MaxRetries
-                            settings.MaxChars
-                            settings.MaxParallelism
-                            details
-                            tickers
-                            settings.MaxDocuments
-                            settings.DisableReasoning
-                    let ativos = Async.RunSynchronously task
-                    let path = SummaryPage.writeToFile settings.OutputFile DateTime.Now ativos
-                    let okCount = ativos |> List.sumBy (fun a -> a.Comunicados.Length)
-                    let failCount = ativos |> List.sumBy (fun a -> a.Falhas)
-                    Log.notice
-                    <| sprintf "- Página gerada: %s (%d resumos, %d falhas, %d ativos)." path okCount failCount ativos.Length
-                    0
-
 [<EntryPoint>]
 let main (args: string array) : int =
     if args.Length = 0 || args.[0] = "help" then
@@ -134,5 +53,4 @@ let main (args: string array) : int =
     match args.[0] with
     | "serve-api" -> Api.startApiServer args[1..]
     | "update-json" -> updateJson args[1..]
-    | "summarize" -> summarize args[1..]
     | _ -> usage ()

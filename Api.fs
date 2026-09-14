@@ -220,7 +220,6 @@ let configureRoutes (app: WebApplication) memoryCache =
         app.MapGet("/api/news/count", handleNumberOfReports memoryCache) |> ignore
         app.MapGet("/api/news", handleLoadPagedNews) |> ignore
         app.MapGet("/legacy", handleHtmlFile "report_viewer_legacy.html") |> ignore
-        app.MapGet("/resumos", handleHtmlFile (Config.readSummarySettings().OutputFile)) |> ignore
         app.MapGet("/", handleHtmlFile "report_viewer.html") |> ignore
 
 let startApiServer (args: string array) =
