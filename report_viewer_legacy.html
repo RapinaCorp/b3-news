@@ -146,6 +146,82 @@
             display: none;
         }
 
+        /* --- DARK THEME (toggled via `dark` class on <html>) --- */
+        html.dark body {
+            background-color: #1a1a1a;
+            color: #ddd;
+        }
+        html.dark #app {
+            background-color: #222;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        html.dark header {
+            border-bottom-color: #444;
+        }
+        html.dark h1 {
+            color: #eee;
+        }
+        html.dark #config-area {
+            border-color: #555;
+        }
+        html.dark #config-area input,
+        html.dark th input {
+            background-color: #333;
+            color: #eee;
+            border-color: #555;
+        }
+        html.dark #loading-indicator {
+            color: #66aaff;
+        }
+        html.dark th,
+        html.dark td {
+            border-bottom-color: #444;
+        }
+        html.dark th {
+            background-color: #2a2a2a;
+        }
+        html.dark tbody tr:hover {
+            background-color: #333;
+        }
+        html.dark a {
+            color: #66aaff;
+        }
+        html.dark #pagination-controls button {
+            background-color: #333;
+            border-color: #555;
+            color: #ddd;
+        }
+        html.dark #pagination-controls button.active {
+            background-color: #0066cc;
+            border-color: #0066cc;
+            color: #fff;
+        }
+        html.dark #pagination-controls button:disabled {
+            color: #777;
+        }
+        html.dark #summaryModal .box {
+            background: #222;
+            border-color: #555;
+        }
+        html.dark #summaryModalTitle {
+            color: #eee;
+        }
+        html.dark #summaryModalBody {
+            color: #ddd;
+        }
+        html.dark .summary-btn {
+            color: #999;
+        }
+        html.dark .summary-btn:hover {
+            color: #66aaff;
+        }
+        .summary-error {
+            color: #c00;
+        }
+        html.dark .summary-error {
+            color: #ff8080;
+        }
+
         .summary-btn {
             margin-left: 4px;
             background: none;
@@ -187,8 +263,11 @@
 <body>
 
     <div id="app">
-        <header>
-            <h1>Relatórios de Empresas e FIIs</h1>
+        <header style="overflow:hidden;">
+            <h1 style="float:left;">Relatórios de Empresas e FIIs</h1>
+            <button id="themeToggle" title="Alternar tema claro/escuro" style="float:right; cursor:pointer;">
+                <span id="moonIcon">🌙</span><span id="sunIcon" style="display:none;">☀️</span>
+            </button>
         </header>
 
         <div id="config-area" class="hide">
@@ -241,7 +320,8 @@
             var constants = {
                 API_BASE_URL: '/api/news',
                 DEBOUNCE_DELAY: 600,
-                LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy'
+                LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy',
+                THEME_STORAGE_KEY: 'reportViewerThemeLegacy'
             };
 
             // --- STATE MANAGEMENT ---
@@ -422,7 +502,7 @@
                 var body = document.getElementById('summaryModalBody');
                 body.innerHTML = '';
                 var msg = document.createElement('span');
-                msg.style.color = '#c00';
+                msg.className = 'summary-error';
                 msg.textContent = message;
                 var retry = document.createElement('button');
                 retry.textContent = 'Tentar de novo';
@@ -593,6 +673,7 @@
             // --- INITIALIZATION ---
             function init() {
                 loadConfig();
+                initializeTheme();
                 updateSortIcons();
                 fetchData(true);
 
@@ -626,6 +707,44 @@
                     var key = e.keyCode || e.which;
                     if (key === 27) hideSummaryModal();
                 });
+
+                document.getElementById('themeToggle').addEventListener('click', function () {
+                    setDarkTheme(!isDarkTheme());
+                    try {
+                        localStorage.setItem(constants.THEME_STORAGE_KEY, isDarkTheme() ? 'dark' : 'light');
+                    } catch (themeSaveErr) {}
+                });
+            }
+
+            function isDarkTheme() {
+                var classes = (' ' + document.documentElement.className + ' ').replace(/[\t\r\n]/g, ' ');
+                return classes.indexOf(' dark ') >= 0;
+            }
+
+            function setDarkTheme(on) {
+                var root = document.documentElement;
+                var classes = (' ' + root.className + ' ').replace(/[\t\r\n]/g, ' ');
+                if (on) {
+                    if (classes.indexOf(' dark ') < 0) root.className = (root.className + ' dark').replace(/^\s+/, '');
+                } else {
+                    root.className = classes.replace(/ dark /g, ' ').replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+                }
+                document.getElementById('moonIcon').style.display = on ? 'none' : '';
+                document.getElementById('sunIcon').style.display = on ? '' : 'none';
+            }
+
+            function initializeTheme() {
+                var saved = null;
+                try {
+                    saved = localStorage.getItem(constants.THEME_STORAGE_KEY);
+                } catch (themeLoadErr) {}
+                var prefersDark = false;
+                if (window.matchMedia) {
+                    try {
+                        prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    } catch (matchMediaErr) {}
+                }
+                setDarkTheme(saved === 'dark' || (saved !== 'light' && prefersDark));
             }
 
             init();
