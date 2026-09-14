@@ -43,6 +43,14 @@ let parseDetailDate (s: string) : DateTime =
     | true, dt -> dt
     | false, _ -> DateTime.MinValue
 
+/// Prefixo YYYY-MM-DD de `NewsDetail.dateTime` ("2024-01-15 10:00:00").
+/// Retorna "" quando o valor é nulo/curto demais para comparação segura.
+let datePrefix (dt: string) =
+    if System.String.IsNullOrEmpty dt || dt.Length < 10 then
+        ""
+    else
+        dt.Substring(0, 10)
+
 /// Últimos `n` comunicados por ticker, mais recentes primeiro.
 let selectRecentDocuments (details: NewsDetail list) (tickers: string list) (n: int) : (string * NewsDetail list) list =
     let wanted =
@@ -58,6 +66,28 @@ let selectRecentDocuments (details: NewsDetail list) (tickers: string list) (n: 
             |> List.sortByDescending (fun d -> d.dateTime)
             |> List.truncate (max 0 n)
         ticker, docs)
+
+/// Todos os comunicados de um dia (`YYYY-MM-DD`) por ticker, mais recentes primeiro.
+/// Apenas tickers com ao menos um documento no dia são incluídos, sem truncar
+/// por `MaxDocuments`: o filtro de data já delimita o escopo do relatório.
+let selectDocumentsByDate
+    (details: NewsDetail list)
+    (tickers: string list)
+    (date: string)
+    : (string * NewsDetail list) list =
+    let wanted =
+        tickers
+        |> List.map (fun t -> t.Trim().ToUpperInvariant())
+        |> List.filter (fun t -> t <> "")
+        |> List.distinct
+    wanted
+    |> List.map (fun ticker ->
+        let docs =
+            details
+            |> List.filter (fun d -> d.ticker.Trim().ToUpperInvariant() = ticker && datePrefix d.dateTime = date)
+            |> List.sortByDescending (fun d -> d.dateTime)
+        ticker, docs)
+    |> List.filter (fun (_, docs) -> not (List.isEmpty docs))
 
 type ExtractFn = string -> int -> Async<Result<ContentExtractor.ExtractedContent, string>>
 type SummarizeFn = string -> string -> string -> Async<Result<string, string>>
@@ -189,3 +219,40 @@ let run
     let summarizePrompt systemPrompt content label =
         NvidiaClient.summarize apiKey model systemPrompt content label maxRetries disableReasoning
     runWith ContentExtractor.extractText summarizePrompt maxChars maxParallelism details tickers maxDocuments disableReasoning
+
+/// Variante de `runWith` filtrada por dia (`YYYY-MM-DD`): resume todos os
+/// documentos daquele dia, apenas para tickers com documentos no dia.
+let runWithDate
+    (extract: ExtractFn)
+    (summarize: SummarizeFn)
+    (maxChars: int)
+    (maxParallelism: int)
+    (details: NewsDetail list)
+    (tickers: string list)
+    (date: string)
+    (disableReasoning: bool)
+    : Async<AtivoResumo list> =
+    async {
+        let groups = selectDocumentsByDate details tickers date
+        let! ativos =
+            groups
+            |> List.map (fun (ativo, docs) ->
+                summarizeAtivo extract summarize maxChars maxParallelism ativo docs disableReasoning)
+            |> fun ops -> Async.Parallel(ops, 1)
+        return ativos |> Array.toList
+    }
+
+let runForDate
+    (apiKey: string)
+    (model: string)
+    (maxRetries: int)
+    (maxChars: int)
+    (maxParallelism: int)
+    (details: NewsDetail list)
+    (tickers: string list)
+    (date: string)
+    (disableReasoning: bool)
+    : Async<AtivoResumo list> =
+    let summarizePrompt systemPrompt content label =
+        NvidiaClient.summarize apiKey model systemPrompt content label maxRetries disableReasoning
+    runWithDate ContentExtractor.extractText summarizePrompt maxChars maxParallelism details tickers date disableReasoning

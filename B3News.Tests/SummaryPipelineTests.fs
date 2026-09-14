@@ -80,3 +80,76 @@ let ``runWith empty ticker yields placeholder`` () =
     Assert.Equal("ABEV", result.Head.Ativo)
     Assert.Empty(result.Head.Comunicados)
     Assert.Contains("Nenhum comunicado", result.Head.ResumoConsolidado)
+
+[<Fact>]
+let ``selectDocumentsByDate keeps only matching day and drops empty tickers`` () =
+    let details =
+        [ detail "ITUB" "2026-09-10 10:00:00" "A" "http://a"
+          detail "PETR" "2026-09-10 11:00:00" "B" "http://b"
+          detail "PETR" "2026-09-11 09:00:00" "C" "http://c"
+          detail "VALE" "2026-09-11 09:00:00" "V" "http://v" ]
+    let selected = selectDocumentsByDate details [ "ITUB"; "PETR"; "VALE" ] "2026-09-10"
+    Assert.Equal(2, selected.Length)
+    Assert.DoesNotContain(selected, fun (t, _) -> t = "VALE")
+    let itub = selected |> List.find (fun (t, _) -> t = "ITUB") |> snd
+    Assert.Single(itub) |> ignore
+    Assert.Equal("A", itub.Head.reportType)
+    let petr = selected |> List.find (fun (t, _) -> t = "PETR") |> snd
+    Assert.Single(petr) |> ignore
+    Assert.Equal("B", petr.Head.reportType)
+
+[<Fact>]
+let ``selectDocumentsByDate returns empty when no document matches`` () =
+    let details = [ detail "ITUB" "2026-09-10 10:00:00" "A" "http://a" ]
+    let selected = selectDocumentsByDate details [ "ITUB" ] "2026-09-11"
+    Assert.Empty(selected)
+
+[<Fact>]
+let ``runWithDate summarizes only documents from given day`` () =
+    let details =
+        [ detail "ITUB" "2026-09-10 10:00:00" "A" "http://a"
+          detail "PETR" "2026-09-10 11:00:00" "B" "http://b"
+          detail "PETR" "2026-09-11 09:00:00" "C" "http://c" ]
+    let extract (url: string) _max =
+        async {
+            return
+                Ok
+                    { ContentExtractor.Url = url
+                      ContentExtractor.Text = "texto do comunicado"
+                      ContentExtractor.SourceType = "html" }
+        }
+    let summarize _system (content: string) _label =
+        async { return Ok("resumo") }
+    let result =
+        runWithDate extract summarize 1000 2 details [ "ITUB"; "PETR" ] "2026-09-10" false
+        |> Async.RunSynchronously
+    Assert.Equal(2, result.Length)
+    Assert.All(result, fun (a: AtivoResumo) -> Assert.Equal(1, a.Comunicados.Length))
+
+[<Fact>]
+let ``selectDocumentsByDate does not truncate by MaxDocuments`` () =
+    let details =
+        [ for h in 8..14 do
+              detail "PETR" (sprintf "2026-09-10 %02d:00:00" h) (sprintf "Doc%d" h) (sprintf "http://doc%d" h) ]
+    let selected = selectDocumentsByDate details [ "PETR" ] "2026-09-10"
+    let petr = selected |> List.find (fun (t, _) -> t = "PETR") |> snd
+    Assert.Equal(7, petr.Length)
+
+[<Fact>]
+let ``selectDocumentsByDate sorts same-day documents most recent first`` () =
+    let details =
+        [ detail "PETR" "2026-09-10 08:00:00" "Manha" "http://manha"
+          detail "PETR" "2026-09-10 12:00:00" "MeioDia" "http://meiodia"
+          detail "PETR" "2026-09-10 10:00:00" "ManhaTarde" "http://manhatarde" ]
+    let selected = selectDocumentsByDate details [ "PETR" ] "2026-09-10"
+    let petr = selected |> List.find (fun (t, _) -> t = "PETR") |> snd
+    let titles = petr |> List.map (fun d -> d.reportType)
+    Assert.Equal<string list>([ "MeioDia"; "ManhaTarde"; "Manha" ], titles)
+
+[<Theory>]
+[<InlineData("2026-09-10 10:00:00", "2026-09-10")>]
+[<InlineData("", "")>]
+[<InlineData("2026", "")>]
+[<InlineData(null, "")>]
+let ``datePrefix extracts day or returns empty for malformed input`` (input: string, expected: string) =
+    Assert.Equal(expected, datePrefix input)
