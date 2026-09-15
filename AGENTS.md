@@ -6,8 +6,8 @@ F# / .NET console + minimal API. Single app project + xunit test project.
 - SDK: README says .NET 10 SDK, but `B3News.fsproj:5` targets `net9.0` — trust fsproj; `dotnet build` works with either.
 - `dotnet build`
 - `dotnet run -- <command>` — note `--` to forward args:
-  - `update-json <data1> [<data2>]` (dates `YYYY-MM-DD`; missing arg defaults to today in `Program.fs:27`)
-  - `serve-api` (Kestrel `http://localhost:8082` from `b3news.settings.json`)
+  - `update <data1> [<data2>]` (dates `YYYY-MM-DD`; missing arg defaults to today in `Program.fs:27`)
+  - `server` (Kestrel `http://localhost:8082` from `b3news.settings.json`)
 - Tests: `dotnet test`
 - Single test: `dotnet test B3News.Tests --filter "FullyQualifiedName~<TestName>"`
 - Do NOT trust `b3news.service:11` (`B3News daemon`) — no `daemon` command exists in `Program.fs:54`; stale deploy file.

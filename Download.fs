@@ -7,17 +7,21 @@ open System.IO
 
 open Thoth.Json.Net
 
-let patternFnet =
+let private  patternFnet =
     "https://fnet.bmfbovespa.com.br/fnet/publico/(?:visualizarDocumento|exibirDocumento)\\?id=([0-9]+)"
+let private fnetRegex = Regex(patternFnet, RegexOptions.Compiled)
 
-let patternEnet =
+let private patternEnet =
     "https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmExibirArquivoIPEExterno.aspx\\?ID=([0-9]+)"
+let private enetRegex = Regex(patternEnet, RegexOptions.Compiled)
 
-let patternEnetNbc =
+let private patternEnetNbc =
     "(https://www.rad.cvm.gov.br/ENET(?:WEB)?/frmNBC.aspx\\?NSD=[0-9]+)"
+let private enetNbcRegex = Regex(patternEnetNbc, RegexOptions.Compiled)
 
 /// URLs já transformadas por getRealUrl (proxy local do Enet).
-let patternPdfProxy = @"(?:^|/)pdf/(\d+)\.pdf(?:$|\?)"
+let private patternPdfProxy = @"(?:^|/)pdf/(\d+)\.pdf(?:$|\?)"
+let private pdfProxyRegex = Regex(patternPdfProxy, RegexOptions.Compiled ||| RegexOptions.IgnoreCase)
 
 /// URL do WebMethod que devolve o PDF (base64) — não depende do id, então fica fixa.
 let private enetApiUrl =
@@ -79,18 +83,19 @@ type SaveOutcome =
 /// Classifies a B3 download-source URL. Single place where the raw URL patterns
 /// are matched; callers pattern-match on `Source` instead of re-running regexes.
 let classify (url: string) : Source =
-    let fnetMatch = Regex.Match(url, patternFnet)
-    let enetMatch = Regex.Match(url, patternEnet)
-    let nbcMatch = Regex.Match(url, patternEnetNbc)
-    let pdfProxyMatch = Regex.Match(url, patternPdfProxy, RegexOptions.IgnoreCase)
-    if fnetMatch.Success then
-        Fnet(int fnetMatch.Groups.[1].Value)
-    elif enetMatch.Success then
-        Enet(int enetMatch.Groups.[1].Value)
-    elif nbcMatch.Success then
-        EnetNbc nbcMatch.Value
-    elif pdfProxyMatch.Success then
-        Enet(int pdfProxyMatch.Groups.[1].Value)
+    let fnetMatch = lazy fnetRegex.Match(url)
+    let enetMatch = lazy enetRegex.Match(url)
+    let nbcMatch = lazy enetNbcRegex.Match(url)
+    let pdfProxyMatch = lazy pdfProxyRegex.Match(url)
+
+    if fnetMatch.Value.Success then
+        Fnet(int fnetMatch.Value.Groups.[1].Value)
+    elif enetMatch.Value.Success then
+        Enet(int enetMatch.Value.Groups.[1].Value)
+    elif nbcMatch.Value.Success then
+        EnetNbc nbcMatch.Value.Value
+    elif pdfProxyMatch.Value.Success then
+        Enet(int pdfProxyMatch.Value.Groups.[1].Value)
     else
         Unknown url
 

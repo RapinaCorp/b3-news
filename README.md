@@ -50,7 +50,7 @@ A aplicação pode ser executada com diferentes argumentos para realizar tarefas
 *   **Iniciar o servidor da API:**
     Este comando inicia um servidor local para servir a interface web e a API JSON de visualização.
     ```bash
-    dotnet run serve-api
+    dotnet run server
     ```
     Após iniciar, acesse [http://localhost:8082](http://localhost:8082) no seu navegador. A versão legada (compatível com iOS 9) está em [http://localhost:8082/legacy](http://localhost:8082/legacy).
 

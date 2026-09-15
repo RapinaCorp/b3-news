@@ -22,7 +22,7 @@ let private httpClient =
     c.Timeout <- TimeSpan.FromSeconds 60.0
     c
 
-let truncate (s: string) (maxChars: int) =
+let truncate (maxChars: int) (s: string) =
     if maxChars <= 0 || s.Length <= maxChars then
         s
     else
@@ -45,7 +45,7 @@ let extractHtml (bytes: byte[]) (maxChars: int) : Result<string, string> =
                 ""
             else
                 HtmlEntity.DeEntitize(doc.DocumentNode.InnerText)
-        let text = collapseWs raw |> fun t -> truncate t maxChars
+        let text = collapseWs raw |> truncate maxChars
         if String.IsNullOrWhiteSpace text then
             Error "HTML sem texto extraível"
         else
@@ -60,7 +60,7 @@ let extractPdf (bytes: byte[]) (maxChars: int) : Result<string, string> =
             doc.GetPages()
             |> Seq.map (fun p -> p.Text)
             |> String.concat " "
-        let text = collapseWs raw |> fun t -> truncate t maxChars
+        let text = collapseWs raw |> truncate maxChars
         if String.IsNullOrWhiteSpace text then
             Error "PDF sem texto extraível"
         else
@@ -123,26 +123,19 @@ let private fetchGeneric (url: string) : Async<Result<byte[] * Kind, string>> =
 /// Baixa o comunicado (reusa Download.fetchBytes para Fnet/Enet) e devolve texto plano truncado.
 let extractText (url: string) (maxChars: int) : Async<Result<ExtractedContent, string>> =
     async {
-        printfn "  - extraindo %s" url
-        match classify url with
-        | Unknown u ->
-            let! fetched = fetchGeneric u
-            match fetched with
-            | Error err -> return Error err
-            | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
-        | EnetNbc nsd ->
-            let! fetched = fetchGeneric nsd
-            match fetched with
-            | Error err -> return Error err
-            | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
-        | Fnet _ ->
-            let! fetched = fetchGeneric url
-            match fetched with
-            | Error err -> return Error err
-            | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
-        | source ->
-            let! fetched = fetchBytes source
-            match fetched with
-            | Error err -> return Error(describeFetchErr err)
-            | Ok(bytes, kind) -> return extractFromBytes url kind bytes maxChars
+        Log.debug $"- extraindo {url}"
+
+        let! fetched = 
+            match classify url with
+            | EnetNbc nsd        -> fetchGeneric nsd
+            | Unknown _ | Fnet _ -> fetchGeneric url
+            | source ->
+                async {
+                    let! res = fetchBytes source
+                    return Result.mapError describeFetchErr res
+                }
+
+        match fetched with
+        | Ok (bytes, kind) -> return extractFromBytes url kind bytes maxChars
+        | Error err        -> return Error err
     }

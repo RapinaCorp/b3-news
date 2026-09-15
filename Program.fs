@@ -10,16 +10,16 @@ let usage () =
     printfn "Uso: %s <comando> [opções]" exeName
     printfn ""
     printfn "Comandos disponíveis:"
-    printfn "  update-json <data1> [<data2>]   Atualiza relatórios JSON"
-    printfn "  serve-api [opções]              Inicia o servidor de API JSON"
+    printfn "  update <data1> [<data2>]        Atualiza relatórios JSON"
+    printfn "  server [opções]                 Inicia o servidor web"
     printfn ""
     printfn "  help                            Mostra esta mensagem de ajuda"
     printfn ""
-    printfn "Formato da data: AAAA-MM-DD (ou 'hoje')"
+    printfn "Formato da data: AAAA-MM-DD"
     printfn ""
     exit 0
 
-let updateJson (args: string array) =
+let updateReportsJson (args: string array) =
     let d1 =
         if args.Length >= 1 then
             args.[0]
@@ -42,7 +42,7 @@ let updateJson (args: string array) =
         Log.notice <| sprintf "- %d relatórios adicionados." num
         0
     | Error err ->
-        Log.error <| sprintf "x Erro (updateJson): %s" err
+        Log.error <| sprintf "x Erro (updateReportsJson): %s" err
         1
 
 [<EntryPoint>]
@@ -51,6 +51,6 @@ let main (args: string array) : int =
         usage ()
 
     match args.[0] with
-    | "serve-api" -> Api.startApiServer args[1..]
-    | "update-json" -> updateJson args[1..]
+    | "server" -> Api.startApiServer args[1..]
+    | "update" -> updateReportsJson args[1..]
     | _ -> usage ()
