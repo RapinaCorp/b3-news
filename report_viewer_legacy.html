@@ -481,9 +481,9 @@
                     summaryBtn.textContent = '▾';
                     summaryBtn.title = 'Ver resumo do comunicado';
                     summaryBtn.className = 'summary-btn';
-                    summaryBtn.onclick = (function (id, title) {
-                        return function () { openSummaryPopup(id, title); };
-                    })(report.id, report.reportType);
+                    summaryBtn.onclick = (function (id, title, summary) {
+                        return function () { openSummaryPopup(id, title, summary); };
+                    })(report.id, report.ticker + ' | ' + report.reportType, report.summary);
                     typeCell.appendChild(summaryBtn);
 
                     row.appendChild(typeCell);
@@ -561,19 +561,19 @@
                 retry.textContent = 'Tentar de novo';
                 retry.style.display = 'block';
                 retry.style.marginTop = '8px';
-                retry.onclick = function () { openSummaryPopup(id, title); };
+                retry.onclick = function () { openSummaryPopup(id, title, null); };
                 body.appendChild(msg);
                 body.appendChild(retry);
             }
 
-            function openSummaryPopup(id, title) {
+            function openSummaryPopup(id, title, summaryText) {
                 var modal = document.getElementById('summaryModal');
                 var body = document.getElementById('summaryModalBody');
                 document.getElementById('summaryModalTitle').textContent = title || 'Resumo';
                 showSummaryModal();
 
-                if (summaryCache[id]) {
-                    renderSummaryBullets(body, summaryCache[id]);
+                if (summaryText || summaryCache[id]) {
+                    renderSummaryBullets(body, summaryText || summaryCache[id]);
                     return;
                 }
 

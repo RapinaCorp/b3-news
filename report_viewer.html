@@ -33,7 +33,7 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        h1 {
+        h1, h2, h3 {
             font-family: 'Nunito', sans-serif;
             font-weight: 600;
         }
@@ -191,6 +191,9 @@
                 LOCAL_STORAGE_KEY: 'reportViewerConfig',
                 DEFAULT_PAGE_SIZE: 20,
                 MAX_PAGINATION_PAGES_TO_SHOW: 5,
+                SUMMARY_COLOR_EMPTY: 'text-gray-400',
+                SUMMARY_COLOR_HAS_TEXT: 'text-green-600',
+                SUMMARY_COLOR_ACTIVE: 'text-orange-600',
             };
 
             // --- STATE MANAGEMENT ---
@@ -214,7 +217,8 @@
                     intervalForNewReports: null,
                     localRecordCount: 0,
                 },
-                hasConfigChanged: false
+                hasConfigChanged: false,
+                lastClickedSummaryBtn: null
             };
 
             // --- DOM ELEMENT REFERENCES ---
@@ -265,6 +269,20 @@
                     hour12: false
                 };
                 return date.toLocaleString('pt-BR', options).replace(',', '');
+            }
+
+            function summaryColorFor(summaryText) {
+                return summaryText ? constants.SUMMARY_COLOR_HAS_TEXT : constants.SUMMARY_COLOR_EMPTY;
+            }
+
+            function paintSummaryBtn(btn, colorClass) {
+                btn.className = colorClass + btn.dataset.baseClasses;
+            }
+
+            function resetPrevSummaryBtn(prev, current) {
+                if (prev && prev !== current && document.contains(prev)) {
+                    paintSummaryBtn(prev, prev.dataset.originalColor);
+                }
             }
 
             function emptyMailbox() {
@@ -416,12 +434,12 @@
                 retry.id = 'summaryRetryBtn';
                 retry.className = 'block mt-2 text-blue-600 dark:text-blue-400 hover:underline';
                 retry.textContent = 'Tentar de novo';
-                retry.addEventListener('click', () => openSummaryPopup(body.dataset.summaryId, body.dataset.summaryTitle));
+                retry.addEventListener('click', () => openSummaryPopup(body.dataset.summaryId, body.dataset.summaryTitle, null));
                 body.appendChild(err);
                 body.appendChild(retry);
             }
 
-            async function openSummaryPopup(id, title) {
+            async function openSummaryPopup(id, title, summaryText) {
                 const modal = document.getElementById('summaryModal');
                 const body = document.getElementById('summaryModalBody');
                 document.getElementById('summaryModalTitle').textContent = title || 'Resumo';
@@ -429,9 +447,9 @@
                 body.dataset.summaryTitle = title || 'Resumo';
                 modal.classList.remove('hidden');
 
-                if (summaryCache[id]) {
-                    renderSummaryBullets(body, summaryCache[id]);
-                    return;
+                if (summaryText || summaryCache[id]) {
+                    renderSummaryBullets(body, summaryText || summaryCache[id]);
+                    return true;
                 }
 
                 body.innerHTML = '<span class="text-gray-400">Gerando resumo…</span>';
@@ -440,14 +458,17 @@
                     if (!resp.ok) {
                         const err = await resp.json().catch(() => ({}));
                         showSummaryError(`Não foi possível gerar o resumo${err.error ? ': ' + err.error : ''}.`);
-                        return;
+                        return false;
                     }
                     const data = await resp.json();
                     summaryCache[id] = data.summary;
                     renderSummaryBullets(body, data.summary);
                 } catch (e) {
                     showSummaryError('Erro de conexão ao gerar o resumo.');
+                    return false;
                 }
+
+                return true;
             }
 
             // --- UI RENDERING & MANIPULATION ---
@@ -461,6 +482,7 @@
 
             function renderTable() {
                 elements.tableBody.innerHTML = '';
+                state.lastClickedSummaryBtn = null;
                 if (state.reports.length === 0) {
                     const message = state.totalRecords > 0 ? "Nenhum relatório para esta página." : "Nenhum relatório encontrado com seus critérios.";
                     const row = elements.tableBody.insertRow();
@@ -495,8 +517,26 @@
                     summaryBtn.textContent = '▾';
                     summaryBtn.title = 'Ver resumo do comunicado';
                     summaryBtn.setAttribute('aria-label', 'Ver resumo do comunicado');
-                    summaryBtn.className = 'ml-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none';
-                    summaryBtn.addEventListener('click', () => openSummaryPopup(report.id, report.reportType));
+                    const summaryBaseClasses = ' ml-1 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none';
+                    summaryBtn.dataset.baseClasses = summaryBaseClasses;
+                    summaryBtn.dataset.originalColor = summaryColorFor(report.summary);
+                    summaryBtn.className = summaryBtn.dataset.originalColor + summaryBaseClasses;
+                    summaryBtn.addEventListener('click', async () => {
+                        resetPrevSummaryBtn(state.lastClickedSummaryBtn, summaryBtn);
+                        paintSummaryBtn(summaryBtn, constants.SUMMARY_COLOR_ACTIVE);
+                        state.lastClickedSummaryBtn = summaryBtn;
+                        const ok = await openSummaryPopup(report.id, report.ticker + ' | ' + report.reportType, report.summary);
+                        if (!ok) return;
+                        const loaded = summaryCache[report.id] || report.summary;
+                        if (!loaded) return;
+                        report.summary = loaded;
+                        const stored = state.reports.find(r => r.id === report.id);
+                        if (stored) stored.summary = loaded;
+                        summaryBtn.dataset.originalColor = constants.SUMMARY_COLOR_HAS_TEXT;
+                        if (state.lastClickedSummaryBtn !== summaryBtn && document.contains(summaryBtn)) {
+                            paintSummaryBtn(summaryBtn, constants.SUMMARY_COLOR_HAS_TEXT);
+                        }
+                    });
                     typeCell.appendChild(summaryBtn);
 
                     row.appendChild(typeCell);
