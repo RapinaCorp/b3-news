@@ -136,6 +136,10 @@ let extractText (url: string) (maxChars: int) : Async<Result<ExtractedContent, s
                 }
 
         match fetched with
+        | Ok (bytes, kind) -> Log.debug <| sprintf "- baixado %s (%d bytes, %A)" url bytes.Length kind 
+        | Error err -> Log.warning (sprintf "x falha ao baixar %s: %s" url err)
+
+        match fetched with
         | Ok (bytes, kind) -> return extractFromBytes url kind bytes maxChars
         | Error err        -> return Error err
     }

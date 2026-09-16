@@ -215,13 +215,14 @@ let handleGetSummary (ctx: HttpContext) : Task =
                 | Some detail when not (System.String.IsNullOrWhiteSpace detail.summary) ->
                     do! writeJsonResponse ctx HttpStatusCode.OK {| summary = detail.summary |}
                 | Some detail ->
-                    match Config.nvidiaApiKey () with
+                    match Config.llmApiKey () with
                     | Error err ->
                         do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
                     | Ok apiKey ->
                         let settings = Config.readSummarySettings ()
                         let! result =
                             NewsSummary.summarizeDetail
+                                settings.Endpoint
                                 apiKey
                                 settings.Model
                                 settings.MaxRetries
@@ -280,6 +281,11 @@ let configureRoutes (app: WebApplication) memoryCache =
         app.MapGet("/", handleHtmlFile "report_viewer.html") |> ignore
 
 let startApiServer (args: string array) =
+    // Verificar se a variável de ambiente do provedor de LLM está definida
+    match Config.llmApiKey () with 
+    | Ok _ -> ()
+    | Error msg -> Log.warning $"{msg}\nA API de resumo não funcionará sem uma chave válida."
+
     let builder = WebApplication.CreateBuilder args
     do builder.Configuration.AddJsonFile Config.configFileName |> ignore
     do builder.Services.AddControllers() |> ignore

@@ -1,4 +1,4 @@
-module NvidiaClient
+module OpenAIClient
 
 open System
 open System.Diagnostics
@@ -9,15 +9,13 @@ open System.Threading.Tasks
 
 open Thoth.Json.Net
 
-let endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
-
 let defaultTemperature = 0.3
 let defaultMaxTokens = 512
 
 type ChatMessage = { role: string; content: string }
 
-/// `content` is `string option` (not `string`) because the NVIDIA
-/// OpenAI-compatible API intermittently returns HTTP 200 with
+/// `content` is `string option` (not `string`) because OpenAI-compatible
+/// APIs intermittently return HTTP 200 with
 /// `choices[0].message.content = null` for a transient empty completion.
 /// With a plain `string` field, Thoth.Json fails the whole decode with
 /// "Expecting a string but instead got: null", failing an item that would
@@ -47,19 +45,19 @@ let delayFor429 (retryAfter: TimeSpan option) (attempt: int) : TimeSpan =
 
 let parseChatContent (json: string) : Result<string, string> =
     match Decode.Auto.fromString<ChatResponse> json with
-    | Error err -> Error(sprintf "resposta NVIDIA inválida: %s" err)
-    | Ok resp when List.isEmpty resp.choices -> Error "resposta NVIDIA sem choices"
+    | Error err -> Error(sprintf "resposta LLM inválida: %s" err)
+    | Ok resp when List.isEmpty resp.choices -> Error "resposta LLM sem choices"
     | Ok resp ->
         match resp.choices.Head.message.content with
-        | None -> Error "resposta NVIDIA vazia"
-        | Some text when String.IsNullOrWhiteSpace text -> Error "resposta NVIDIA vazia"
+        | None -> Error "resposta LLM vazia"
+        | Some text when String.IsNullOrWhiteSpace text -> Error "resposta LLM vazia"
         | Some text -> Ok(text.Trim())
 
 /// True for parse failures that are worth retrying: the API returned HTTP 200
 /// but with no usable text (null/blank `content`). Malformed payloads
 /// ("inválida", "sem choices") indicate a contract problem, not a transient
 /// blip, so those fail fast.
-let isTransientEmptyResponse (err: string) : bool = err = "resposta NVIDIA vazia"
+let isTransientEmptyResponse (err: string) : bool = err = "resposta LLM vazia"
 
 let private encodeRequest (model: string) (systemPrompt: string) (content: string) (disableReasoning: bool) : string =
     let messages =
@@ -73,6 +71,8 @@ let private encodeRequest (model: string) (systemPrompt: string) (content: strin
           "max_tokens", Encode.int defaultMaxTokens ]
     // Nemotron 3 family: `reasoning_effort: "none"` disables reasoning tokens
     // server-side, so only the final answer comes back in `content`.
+    // Kept as an extra parameter for all providers: OpenAI-compatible APIs
+    // ignore unknown fields, so models that don't use it are unaffected.
     let fields =
         if disableReasoning then
             baseFields @ [ "reasoning_effort", Encode.string "none" ]
@@ -93,6 +93,7 @@ let private retryAfterOf (resp: HttpResponseMessage) : TimeSpan option =
         None
 
 let rec private postWithRetry
+    (endpoint: string)
     (apiKey: string)
     (model: string)
     (systemPrompt: string)
@@ -113,6 +114,14 @@ let rec private postWithRetry
                     Encoding.UTF8,
                     "application/json"
                 )
+            // print a curl equivalent for debugging
+            // Log.debug (
+            //     sprintf
+            //         "LLM request (curl): curl -X POST %s -H 'Authorization: Bearer %s' -H 'Content-Type: application/json' -d '%s'"
+            //         endpoint
+            //         apiKey
+            //         (encodeRequest model systemPrompt content disableReasoning)
+            // )
             use! resp = httpClient.SendAsync req |> Async.AwaitTask
             let! body = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
             sw.Stop()
@@ -121,7 +130,7 @@ let rec private postWithRetry
                 let delay = delayFor429 (retryAfterOf resp) attempt
                 Log.warning (
                     sprintf
-                        "NVIDIA 429 (%s, %d chars, %dms), retry em %dms (%d tentativas restantes)"
+                        "LLM 429 (%s, %d chars, %dms), retry em %dms (%d tentativas restantes)"
                         label
                         content.Length
                         sw.ElapsedMilliseconds
@@ -130,11 +139,11 @@ let rec private postWithRetry
                 )
                 do! Async.Sleep(int delay.TotalMilliseconds)
                 return!
-                    postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
+                    postWithRetry endpoint apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
             elif not resp.IsSuccessStatusCode then
                 Log.warning (
                     sprintf
-                        "NVIDIA falhou (%s, %d chars, HTTP %d, %dms)"
+                        "LLM falhou (%s, %d chars, HTTP %d, %dms)"
                         label
                         content.Length
                         status
@@ -142,13 +151,13 @@ let rec private postWithRetry
                 )
                 let snippet =
                     if body.Length <= 256 then body else body.Substring(0, 256)
-                return Error(sprintf "HTTP %d da NVIDIA: %s" status snippet)
+                return Error(sprintf "HTTP %d da LLM: %s" status snippet)
             else
                 match parseChatContent body with
                 | Ok text ->
                     Log.info (
                         sprintf
-                            "NVIDIA ok (%s, %d chars, %dms)"
+                            "LLM ok (%s, %d chars, %dms)"
                             label
                             content.Length
                             sw.ElapsedMilliseconds
@@ -158,7 +167,7 @@ let rec private postWithRetry
                     let delay = delayFor429 None attempt
                     Log.warning (
                         sprintf
-                            "NVIDIA resposta vazia (%s, %dms), retry em %dms (%d tentativas restantes)"
+                            "LLM resposta vazia (%s, %dms), retry em %dms (%d tentativas restantes)"
                             label
                             sw.ElapsedMilliseconds
                             (int delay.TotalMilliseconds)
@@ -166,26 +175,35 @@ let rec private postWithRetry
                     )
                     do! Async.Sleep(int delay.TotalMilliseconds)
                     return!
-                        postWithRetry apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
+                        postWithRetry endpoint apiKey model systemPrompt content label (attemptsLeft - 1) (attempt + 1) disableReasoning
                 | Error err ->
-                    Log.warning (sprintf "NVIDIA parse falhou (%s, %dms): %s" label sw.ElapsedMilliseconds err)
+                    Log.warning (sprintf "LLM parse falhou (%s, %dms): %s" label sw.ElapsedMilliseconds err)
                     return Error err
         with
         | :? TaskCanceledException ->
             sw.Stop()
-            Log.warning (sprintf "NVIDIA timeout (%s, %d chars, %dms)" label content.Length sw.ElapsedMilliseconds)
-            return Error "timeout na API da NVIDIA"
+            Log.warning (sprintf "LLM timeout (%s, %d chars, %dms)" label content.Length sw.ElapsedMilliseconds)
+            return Error "timeout na API da LLM"
         | ex ->
             sw.Stop()
-            Log.warning (sprintf "NVIDIA erro de rede (%s): %s" label ex.Message)
-            return Error(sprintf "falha de rede NVIDIA: %s" ex.Message)
+            Log.warning (sprintf "LLM erro de rede (%s): %s" label ex.Message)
+            return Error(sprintf "falha de rede LLM: %s" ex.Message)
     }
 
-/// Envia um texto para o modelo e retorna o resumo gerado.
-/// `label` é só para log (ex: ticker); não vai na API. `maxRetries` inclui a primeira tentativa.
+/// Envia um texto para o modelo via endpoint OpenAI-compatible (`/chat/completions`)
+/// e retorna o resumo gerado.
+/// `endpoint` é a URL completa do endpoint (ex: OpenAI, NVIDIA NIM, Gemini
+/// OpenAI-compatible). `label` é só para log (ex: ticker); não vai na API.
+/// `maxRetries` inclui a primeira tentativa.
 /// `disableReasoning` envia `reasoning_effort: "none"` (família Nemotron 3) para
-/// suprimir o chain-of-thought e receber só a resposta final.
-let summarize (apiKey: string) (model: string) (systemPrompt: string) (content: string) (label: string) (maxRetries: int) (disableReasoning: bool) : Async<Result<string, string>> =
+/// suprimir o chain-of-thought e receber só a resposta final; outros provedores
+/// ignoram o campo desconhecido.
+let summarize (endpoint: string) (apiKey: string) (model: string) (systemPrompt: string) (content: string) (label: string) (maxRetries: int) (disableReasoning: bool) : Async<Result<string, string>> =
     let attempts = max 1 maxRetries
-    Log.info (sprintf "NVIDIA summarize: %s chars=%d" label content.Length)
-    postWithRetry apiKey model systemPrompt content label attempts 0 disableReasoning
+    match Uri.TryCreate(endpoint, UriKind.Absolute) with
+    | false, _ -> async { return Error(sprintf "Endpoint inválido: %s" endpoint) }
+    | true, uri ->
+        // Log the endpoint host alongside each request so an auth failure
+        // after switching providers without updating the key is easy to diagnose.
+        Log.info (sprintf "LLM summarize: %s endpoint=%s chars=%d" label uri.Host content.Length)
+        postWithRetry endpoint apiKey model systemPrompt content label attempts 0 disableReasoning

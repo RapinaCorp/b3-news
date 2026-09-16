@@ -11,14 +11,16 @@ let private withNoThink (disableReasoning: bool) (prompt: string) =
 let individualSystemPrompt (disableReasoning: bool) =
     withNoThink
         disableReasoning
-        "Summarize the communication below in up to 4 lines, in Portuguese, focusing on:\n\
+        "Summarize the communication below in up to 5 lines, single paragraph, in Portuguese, focusing on:\n\
          what was decided/announced, relevant values, and impact for the shareholder.\n\
          Do not repeat the text, be direct."
 
 /// Extrai o conteúdo do link do comunicado e gera o resumo em texto.
+/// `endpoint` é a URL do endpoint OpenAI-compatible (`/chat/completions`).
 /// Não decide o que fazer com o resultado (persistir, responder HTTP) —
 /// isso fica a cargo de quem chama (o handler da API, no passo 2).
 let summarizeDetail
+    (endpoint: string)
     (apiKey: string)
     (model: string)
     (maxRetries: int)
@@ -34,7 +36,8 @@ let summarizeDetail
             let userText =
                 sprintf "Título: %s\nData: %s\n\n%s" detail.reportType detail.dateTime content.Text
             let! summary =
-                NvidiaClient.summarize
+                OpenAIClient.summarize
+                    endpoint
                     apiKey
                     model
                     (individualSystemPrompt disableReasoning)

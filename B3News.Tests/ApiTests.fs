@@ -143,13 +143,16 @@ let private withRawTempReports (json: string) (f: unit -> unit) =
             Directory.SetCurrentDirectory prev
             Directory.Delete(dir, true))
 
-let private withNoNvidiaKey (f: unit -> unit) =
-    let prev = Environment.GetEnvironmentVariable(Config.nvidiaApiKeyEnv)
+let private withNoLlmKey (f: unit -> unit) =
+    let vars = [ Config.llmApiKeyEnv; Config.openaiApiKeyEnv; Config.nvidiaApiKeyEnv ]
+    let prev = vars |> List.map (fun v -> v, Environment.GetEnvironmentVariable v)
     try
-        Environment.SetEnvironmentVariable(Config.nvidiaApiKeyEnv, null)
+        for v in vars do
+            Environment.SetEnvironmentVariable(v, null)
         f ()
     finally
-        Environment.SetEnvironmentVariable(Config.nvidiaApiKeyEnv, prev)
+        for v, value in prev do
+            Environment.SetEnvironmentVariable(v, value)
 
 let private summaryDetail id summary =
     { id = id
@@ -175,7 +178,7 @@ let private runSummaryHandler (ctx: DefaultHttpContext) =
     ctx.Response.StatusCode, sr.ReadToEnd()
 
 [<Fact>]
-let ``handleGetSummary returns cached summary without calling NVIDIA`` () =
+let ``handleGetSummary returns cached summary without calling LLM`` () =
     withTempReports [ summaryDetail 1 "resumo em cache"; summaryDetail 2 "" ] (fun () ->
         let status, body = runSummaryHandler (summaryCtx "1")
         Assert.Equal(200, status)
@@ -198,7 +201,7 @@ let ``handleGetSummary returns 404 for unknown id`` () =
 
 [<Fact>]
 let ``handleGetSummary returns 500 when uncached and no API key`` () =
-    withNoNvidiaKey (fun () ->
+    withNoLlmKey (fun () ->
         withRawTempReports
             """[{"id":1,"ticker":"PETR","dateTime":"2024-01-15 10:00:00","filename":"file1.pdf","reportType":"Fato Relevante","url":"http://example.com/1"}]"""
             (fun () ->

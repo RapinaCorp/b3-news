@@ -7,7 +7,7 @@ B3News é uma aplicação .NET/F# projetada para baixar, analisar e exibir notí
 *   **Coleta de Notícias:** Baixa e processa relatórios e comunicados diretamente do site da B3.
 *   **Cache Local:** Armazena os dados em um arquivo JSON local (`reports.json`) para acesso rápido e para evitar downloads repetidos.
 *   **Interface Web Interativa:** Páginas web (`report_viewer.html` e `report_viewer_legacy.html` em `/legacy`) para visualizar, filtrar, ordenar e paginar os relatórios.
-*   **Resumo por Comunicado:** Cada linha da coluna "Tipo de Relatório" tem um botão chevron (▾) que abre um modal com o resumo daquele comunicado em até 4 linhas, em português (o que foi decidido/anunciado, valores relevantes e impacto para o acionista). O resumo é gerado sob demanda via NVIDIA na primeira vez e depois reaproveitado do cache.
+*   **Resumo por Comunicado:** Cada linha da coluna "Tipo de Relatório" tem um botão chevron (▾) que abre um modal com o resumo daquele comunicado em até 4 linhas, em português (o que foi decidido/anunciado, valores relevantes e impacto para o acionista). O resumo é gerado sob demanda via LLM (endpoint OpenAI-compatible) na primeira vez e depois reaproveitado do cache.
 *   **Atualizações em Tempo Real:** A interface web verifica e notifica o usuário sobre novos relatórios disponíveis.
 *   **Filtragem Avançada:** Permite filtrar relatórios por ticker, tipo, data e conteúdo do nome do arquivo.
 
@@ -59,15 +59,15 @@ A aplicação pode ser executada com diferentes argumentos para realizar tarefas
 Cada item em `reports.json` tem um campo `summary` (texto; `""`/nulo = ainda não resumido). Itens antigos sem o campo continuam sendo lidos normalmente.
 
 1.  Na tabela, clique no chevron (▾) ao lado do "Tipo de Relatório" para abrir o modal de resumo.
-2.  Na primeira vez, o frontend mostra "Gerando resumo…" e chama `GET /api/news/{id}/summary`. O servidor extrai o texto do comunicado (`ContentExtractor`), gera o resumo via NVIDIA (`NewsSummary.summarizeDetail`) e salva em `reports.json` com `JsonStore.updateSummary`.
-3.  Nas próximas vezes o resumo volta na hora, sem chamar a NVIDIA: primeiro do cache em memória da sessão (`summaryCache`), e após recarregar a página, do `reports.json` via API. O modal exibe o texto em bullets por frase e fecha pelo ✕, clicando fora ou com Esc.
+2.  Na primeira vez, o frontend mostra "Gerando resumo…" e chama `GET /api/news/{id}/summary`. O servidor extrai o texto do comunicado (`ContentExtractor`), gera o resumo via LLM (`NewsSummary.summarizeDetail` → `OpenAIClient.summarize`, endpoint OpenAI-compatible configurável) e salva em `reports.json` com `JsonStore.updateSummary`.
+3.  Nas próximas vezes o resumo volta na hora, sem chamar a LLM: primeiro do cache em memória da sessão (`summaryCache`), e após recarregar a página, do `reports.json` via API. O modal exibe o texto em bullets por frase e fecha pelo ✕, clicando fora ou com Esc.
 4.  Falhas de extração/geração não são persistidas — o campo continua vazio e o modal mostra erro com botão "Tentar de novo". Se a geração funcionar mas o salvamento em disco falhar, a API ainda retorna o resumo, só não fica cacheado.
 
-É necessário exportar `NVIDIA_API_KEY=nvapi-...` para gerar resumos novos. Consultar resumos já cacheados funciona sem a chave.
+É necessário exportar a chave da API (`LLM_API_KEY=...` ou `OPENAI_API_KEY=...`; `NVIDIA_API_KEY=nvapi-...` ainda funciona como legado) para gerar resumos novos. Consultar resumos já cacheados funciona sem a chave.
 
 ### Endpoint
 
-*   `GET /api/news/{id}/summary` → `{"summary": "..."}` quando existe ou foi gerado; `400` para ID inválido, `404` para comunicado não encontrado, `500` sem `NVIDIA_API_KEY` ou sem conseguir ler o `reports.json`, `502` quando a extração ou a NVIDIA falha.
+*   `GET /api/news/{id}/summary` → `{"summary": "..."}` quando existe ou foi gerado; `400` para ID inválido, `404` para comunicado não encontrado, `500` sem chave de API ou sem conseguir ler o `reports.json`, `502` quando a extração ou a LLM falha.
 
 ## Lógica de Paginação Estável
 
@@ -87,7 +87,7 @@ Este mecanismo garante que a ordem e o conteúdo das páginas permaneçam estáv
 
 A aplicação utiliza um arquivo `b3news.settings.json` para configurações. As principais configurações são a lista de `Tickers` para filtrar as notícias durante o download e o bloco `Summary` para geração de resumos. O resumo é gerado um por vez, por requisição HTTP — não há processamento em lote/paralelo.
 
-É preciso definir a variável de ambiente `NVIDIA_API_KEY=nvapi-...` para gerar resumos novos.
+Resumos usam qualquer endpoint OpenAI-compatible (`/chat/completions`). É preciso definir a variável de ambiente `LLM_API_KEY=...` (ou `OPENAI_API_KEY=...`; `NVIDIA_API_KEY` legado ainda funciona) com a chave do provedor escolhido.
 
 **Exemplo de `b3news.settings.json`:**
 ```json
@@ -112,6 +112,7 @@ A aplicação utiliza um arquivo `b3news.settings.json` para configurações. As
     "VALE"
   ],
   "Summary": {
+    "Endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
     "Model": "nvidia/nemotron-3-super-120b-a12b",
     "MaxChars": 7000,
     "MaxRetries": 7,
@@ -120,10 +121,13 @@ A aplicação utiliza um arquivo `b3news.settings.json` para configurações. As
 }
 ```
 
-*   `Model`: modelo da NVIDIA usado em `NewsSummary.summarizeDetail`.
+*   `Endpoint`: URL do endpoint OpenAI-compatible (`/chat/completions`) usado em `NewsSummary.summarizeDetail`. Padrão: NVIDIA NIM. Exemplos de outros provedores:
+    *   OpenAI: `https://api.openai.com/v1/chat/completions` (com `"Model": "gpt-4o-mini"`, por exemplo)
+    *   Google Gemini (interface OpenAI-compatible): `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` (com `"Model": "gemini-2.5-flash"`, por exemplo)
+*   `Model`: nome do modelo no provedor configurado.
 *   `MaxChars`: limite de caracteres do conteúdo extraído enviado ao modelo.
 *   `MaxRetries`: tentativas em caso de erro transitório/rate limit.
-*   `DisableReasoning`: prefixa o prompt com `/no_think` (só faz efeito em modelos Nemotron; outros modelos ignoram como texto comum).
+*   `DisableReasoning`: prefixa o prompt com `/no_think` e envia `reasoning_effort: "none"` (só faz efeito em modelos Nemotron; endpoints OpenAI-compatible ignoram campos desconhecidos, então outros provedores não são afetados).
 
 ## Compilando para Outras Plataformas
 

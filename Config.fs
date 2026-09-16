@@ -6,18 +6,32 @@ open System.Text.Json
 
 let configFileName = "b3news.settings.json"
 let reportsJson = "reports.json"
+
+/// Primary env var for the OpenAI-compatible API key. `OPENAI_API_KEY` is
+/// also accepted (same value works); `NVIDIA_API_KEY` is kept as a legacy
+/// fallback so existing setups keep working.
+let llmApiKeyEnv = "LLM_API_KEY"
+let openaiApiKeyEnv = "OPENAI_API_KEY"
 let nvidiaApiKeyEnv = "NVIDIA_API_KEY"
+
+/// Default OpenAI-compatible chat-completions endpoint (NVIDIA NIM).
+/// Override via `Summary.Endpoint` to use OpenAI, Gemini
+/// (`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`),
+/// or any other OpenAI-compatible provider — no code change needed.
+let defaultLlmEndpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 let (+/) path1 path2 = Path.Combine(path1, path2)
 
 type SummarySettings =
-    { Model: string
+    { Endpoint: string
+      Model: string
       MaxChars: int
       MaxRetries: int
       DisableReasoning: bool }
 
 let defaultSummarySettings =
-    { Model = "meta/llama-3.3-70b-instruct"
+    { Endpoint = defaultLlmEndpoint
+      Model = "meta/llama-3.3-70b-instruct"
       MaxChars = 7000
       MaxRetries = 5
       DisableReasoning = false }
@@ -44,7 +58,8 @@ let private tryReadBool (el: JsonElement) (name: string) =
     | _ -> None
 
 let private mergeSummary (base': SummarySettings) (el: JsonElement) =
-    { Model = tryReadString el "Model" |> Option.defaultValue base'.Model
+    { Endpoint = tryReadString el "Endpoint" |> Option.defaultValue base'.Endpoint
+      Model = tryReadString el "Model" |> Option.defaultValue base'.Model
       MaxChars = tryReadInt el "MaxChars" |> Option.defaultValue base'.MaxChars
       MaxRetries = tryReadInt el "MaxRetries" |> Option.defaultValue base'.MaxRetries
       DisableReasoning = tryReadBool el "DisableReasoning" |> Option.defaultValue base'.DisableReasoning }
@@ -82,15 +97,28 @@ let readSummarySettings () : SummarySettings =
         | true, el when el.ValueKind = JsonValueKind.Object -> mergeSummary defaultSummarySettings el
         | _ -> defaultSummarySettings
 
-let nvidiaApiKey () : Result<string, string> =
-    match Environment.GetEnvironmentVariable nvidiaApiKeyEnv with
+let private apiKeyFromEnv (name: string) : string option =
+    match Environment.GetEnvironmentVariable name with
     | null
-    | "" ->
-        Error(
-            sprintf
-                "%s não definida. Exporte a variável de ambiente com a chave (formato nvapi-...)."
-                nvidiaApiKeyEnv
-        )
-    | key when String.IsNullOrWhiteSpace key ->
-        Error(sprintf "%s está vazia." nvidiaApiKeyEnv)
-    | key -> Ok(key.Trim())
+    | "" -> None
+    | key when String.IsNullOrWhiteSpace key -> None
+    | key -> Some(key.Trim())
+
+/// Chave da API OpenAI-compatible (obrigatória, não versionar/logar o valor).
+/// Ordem: `LLM_API_KEY`, depois `OPENAI_API_KEY`, depois `NVIDIA_API_KEY`
+/// (legado — setups existentes continuam funcionando).
+let llmApiKey () : Result<string, string> =
+    let foundKey = 
+        [ llmApiKeyEnv; openaiApiKeyEnv; nvidiaApiKeyEnv ]
+        |> List.tryPick (fun envName -> 
+            apiKeyFromEnv envName |> Option.map (fun key -> envName, key))
+
+    match foundKey with
+    | Some (envName, key) -> 
+        Log.info $"Usando API key da env var: {envName}"
+        Ok key
+    | None ->
+        Error $"Nenhuma chave de API definida. Exporte {llmApiKeyEnv} (ou {openaiApiKeyEnv}, ou {nvidiaApiKeyEnv} legado) com a chave do provedor."
+
+/// Legado: mantido para compatibilidade; prefira `llmApiKey`.
+let nvidiaApiKey () : Result<string, string> = llmApiKey ()
