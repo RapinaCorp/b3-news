@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="DetailsQueryTests.fs" />
+    <Compile Include="NewsTests.fs" />
     <Compile Include="ApiTests.fs" />
     <Compile Include="DownloadTests.fs" />
     <Compile Include="OpenAIClientTests.fs" />

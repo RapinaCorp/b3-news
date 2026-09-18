@@ -40,6 +40,15 @@ let getCacheFileName d1 d2 =
 let parseDate (s: string) =
     DateTime.ParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture)
 
+/// Module-level client (same lifecycle pattern as Download/OpenAIClient/
+/// ContentExtractor): avoids per-call socket churn.
+let private httpClient = new HttpClient()
+
+/// Parses the cached JSON body into the news list. Pure, so the cache
+/// decision (serve it, or delete and refetch) is testable without network.
+let tryParseCache (cached: string) : Result<NwsMsgWrapper list, string> =
+    Decode.Auto.fromString<NwsMsgWrapper list> cached
+
 let fetchAllNews (d1: string) (d2: string) =
     async {
         let startDate = parseDate d1
@@ -49,30 +58,39 @@ let fetchAllNews (d1: string) (d2: string) =
         else
             Directory.CreateDirectory(cacheDir) |> ignore
             let cacheFile = getCacheFileName d1 d2
+
+            let fetchFresh () =
+                async {
+                    let query = System.Web.HttpUtility.ParseQueryString("")
+                    query.Add("agencia", "18")
+                    query.Add("dataInicial", d1)
+                    query.Add("dataFinal", d2)
+                    let uriBuilder =
+                        UriBuilder("https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias")
+                    uriBuilder.Query <- query.ToString()
+                    try
+                        let! response = httpClient.GetAsync(uriBuilder.Uri) |> Async.AwaitTask
+                        response.EnsureSuccessStatusCode() |> ignore
+                        let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+                        match tryParseCache content with
+                        | Ok data ->
+                            do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
+                            return Ok data
+                        | Error err -> return Error <| sprintf "Erro ao listar notícias: %s" err
+                    with ex ->
+                        return Error(sprintf "HTTP error: %s" ex.Message)
+                }
+
             if File.Exists(cacheFile) then
                 let! cached = File.ReadAllTextAsync(cacheFile) |> Async.AwaitTask
-                match Decode.Auto.fromString<NwsMsgWrapper list> cached with
-                | Ok data -> return Ok data |> ignore
-                | Error _ -> File.Delete(cacheFile) |> ignore // fallback to fetch if cache is corrupted
-            use client = new HttpClient()
-            let query = System.Web.HttpUtility.ParseQueryString("")
-            query.Add("agencia", "18")
-            query.Add("dataInicial", d1)
-            query.Add("dataFinal", d2)
-            let uriBuilder =
-                UriBuilder("https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias")
-            uriBuilder.Query <- query.ToString()
-            try
-                let! response = client.GetAsync(uriBuilder.Uri) |> Async.AwaitTask
-                response.EnsureSuccessStatusCode() |> ignore
-                let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-                match Decode.Auto.fromString<NwsMsgWrapper list> content with
-                | Ok data ->
-                    do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
-                    return Ok data
-                | Error err -> return Error <| sprintf "Erro ao listar notícias: %s" err
-            with ex ->
-                return Error(sprintf "HTTP error: %s" ex.Message)
+                match tryParseCache cached with
+                | Ok data -> return Ok data
+                | Error _ ->
+                    // Corrupted cache: discard and fall through to a fresh fetch.
+                    File.Delete(cacheFile) |> ignore
+                    return! fetchFresh ()
+            else
+                return! fetchFresh ()
     }
 
 let getTicker (txt: string) =
