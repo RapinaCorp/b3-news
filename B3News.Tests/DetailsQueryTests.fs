@@ -52,6 +52,58 @@ let ``Test filterByDate`` () =
     Assert.Contains("ITUB4", tickers)
 
 [<Fact>]
+let ``filterByDate excludes dateTime shorter than 10 chars without throwing`` () =
+    // Regression: Substring(0,10) used to run before the guard and threw
+    // ArgumentOutOfRangeException, crashing /api/news with a 500.
+    let news =
+        [ { id = 1
+            ticker = "PETR4"
+            dateTime = "2025-1-3" // 8 chars — malformed legacy value
+            reportType = "Fato Relevante"
+            filename = "f.pdf"
+            url = "http://example.com/1"
+            summary = "" } ]
+
+    let filtered = news |> List.filter (filterByDate "2024-01-01" "2024-12-31")
+    Assert.Empty(filtered)
+
+[<Fact>]
+let ``filterByDate excludes null dateTime without throwing`` () =
+    // Regression: null used to hit NullReferenceException before the guard.
+    let news =
+        [ { id = 2
+            ticker = "VALE3"
+            dateTime = null
+            reportType = "Fato Relevante"
+            filename = "v.pdf"
+            url = "http://example.com/2"
+            summary = "" } ]
+
+    let filtered = news |> List.filter (filterByDate "2024-01-01" "2024-12-31")
+    Assert.Empty(filtered)
+
+[<Fact>]
+let ``filterAll tolerates malformed dateTime records`` () =
+    // End-to-end through filterAll: one malformed record must not break the
+    // whole listing.
+    let news =
+        { id = 3
+          ticker = "ITUB4"
+          dateTime = "2025-1-3"
+          reportType = "Aviso"
+          filename = "i.pdf"
+          url = "http://example.com/3"
+          summary = "" }
+        :: createSampleNews ()
+
+    let criteria =
+        newCriteria ()
+        |> withDateRange "2024-01-01" "2024-12-31"
+
+    let result = filterAll criteria news
+    Assert.Equal(4, result.TotalRecords)
+
+[<Fact>]
 let ``Test filterByFilename`` () =
     let news = createSampleNews ()
     let filtered = news |> List.filter (filterByFilename "petr4")

@@ -106,10 +106,12 @@ let filterByDate (d1: string) (d2: string) =
         | _ -> ("0000-01-01", "9999-12-31") // wildcard
 
     fun (x: NewsDetail) ->
-        let date = x.dateTime.Substring(0, 10)
-        not (String.IsNullOrWhiteSpace x.dateTime)
-        && date >= startDate
-        && date <= endDate
+        match x.dateTime with
+        | null | "" -> false
+        | s when s.Length >= 10 ->
+            let date = s.Substring(0, 10)
+            date >= startDate && date <= endDate
+        | _ -> false // too short to hold yyyy-MM-dd: excluded, not fatal
 
 let filterByFilename (filename: string) =
     let target = filename.ToLowerInvariant()
@@ -174,20 +176,25 @@ let sortNews (field: SortField) (direction: SortDirection) (items: NewsDetail li
     let sortFn =
         match field with
         | ByDate ->
-            items
-            |> List.choose (fun x ->
-                match
-                    DateTime.TryParseExact(
-                        x.dateTime,
-                        "yyyy-MM-dd HH:mm:ss",
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.None
-                    )
-                with
-                | true, dt -> Some(dt, x)
-                | _ -> None)
-            |> List.sortBy fst
-            |> List.map snd
+            // Records whose dateTime doesn't parse are kept out of the
+            // ordering (unchanged semantics) but made observable — sorted
+            // views silently under-reporting data is a bug factory.
+            let isParseable (x: NewsDetail) =
+                DateTime.TryParseExact(
+                    x.dateTime,
+                    "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None
+                )
+                |> fst
+
+            let parsed, dropped = items |> List.partition isParseable
+
+            if not dropped.IsEmpty then
+                Log.warning (sprintf "sortNews: %d registro(s) com data inválida fora da ordenação" dropped.Length)
+
+            parsed
+            |> List.sortBy (fun x -> DateTime.ParseExact(x.dateTime, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None))
 
         | ByTicker -> items |> List.sortBy (fun x -> x.ticker)
         | ByFilename -> items |> List.sortBy (fun x -> x.filename)
@@ -217,14 +224,10 @@ let filterAll (criteria: NewsFilterCriteria) (details: NewsDetail list) : PagedR
               yield filterByReportType criteria.ReportType ]
 
     let filtered =
+        // Sequential: the dataset is a few thousand in-memory items, so
+        // parallel partitioning is pure overhead and muddies exceptions.
         details
-        |> Array.ofList
-        |> Array.Parallel.choose (fun item ->
-            if filters |> List.forall (fun f -> f item) then
-                Some item
-            else
-                None)
-        |> Array.toList
+        |> List.filter (fun item -> filters |> List.forall (fun f -> f item))
 
     // Limit dataset length if clientRecordCount is provided (apply after filtering, before sorting)
     let limited =
