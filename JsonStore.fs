@@ -15,12 +15,59 @@ let tryRead path : Result<Details.NewsDetail list, string> =
 
 let private tryWrite path details =
     try
-        JsonSerializer.Serialize(details, options)
-        |> fun json -> File.WriteAllText(path, json)
+        // Atomic replace: write to a sibling temp file, then rename over the
+        // target. A crash mid-write leaves either the old file or the new one,
+        // never a truncated hybrid (same directory ⇒ same volume ⇒ rename is
+        // atomic on NTFS and POSIX).
+        let json = JsonSerializer.Serialize(details, options)
+        let tmp = path + ".tmp"
+        File.WriteAllText(tmp, json)
+        File.Move(tmp, path, true)
         Ok()
     with e -> Error $"Error writing JSON: {e.Message}"
 
 let private writeLock = obj ()
+
+/// Merges freshly fetched details into the existing list: preserves cached
+/// summaries for re-fetched items, dedupes by (ticker, dateTime, filename,
+/// url) and sorts newest-first. Returns (addedCount, merged).
+///
+/// Pure (no I/O) so legacy data shapes — e.g. duplicate keys in `existing`,
+/// which older merges or hand edits can produce — are testable without
+/// network. `addedCount` is the number of distinct new keys absent from
+/// `existing`, so duplicates in either list can't skew it.
+let mergeDetails
+    (existing: Details.NewsDetail list)
+    (newDetails: Details.NewsDetail list)
+    : int * Details.NewsDetail list =
+    let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
+
+    // Map.ofList throws on duplicate keys; last one wins via Map.Add.
+    let existingByKey =
+        existing
+        |> List.fold (fun (m: Map<_, Details.NewsDetail>) d -> m.Add(key d, d)) Map.empty
+
+    let newDetailsPreserved =
+        newDetails
+        |> List.map (fun nd ->
+            match Map.tryFind (key nd) existingByKey with
+            | Some old when not (System.String.IsNullOrWhiteSpace old.summary) ->
+                { nd with summary = old.summary }
+            | _ -> nd)
+
+    let addedCount =
+        newDetailsPreserved
+        |> List.map key
+        |> List.distinct
+        |> List.filter (fun k -> not (existingByKey.ContainsKey k))
+        |> List.length
+
+    let merged =
+        newDetailsPreserved @ existing
+        |> List.distinctBy key
+        |> List.sortByDescending (_.dateTime)
+
+    addedCount, merged
 
 let updateNewsCust jsonPath codes startDate endDate : Async<Result<int, string>> =
     async {
@@ -28,26 +75,11 @@ let updateNewsCust jsonPath codes startDate endDate : Async<Result<int, string>>
         return
             detailsResult
             |> Result.bind (fun newDetails ->
-                let key (x: Details.NewsDetail) = x.ticker, x.dateTime, x.filename, x.url
                 let newDetailsTransformed =
                     newDetails |> List.map (fun nd -> { nd with url = Download.getRealUrl nd.url })
                 tryRead jsonPath
                 |> Result.bind (fun existing ->
-                    let existingByKey = existing |> List.map (fun d -> key d, d) |> Map.ofList
-                    let newDetailsPreserved =
-                        newDetailsTransformed
-                        |> List.map (fun nd ->
-                            match Map.tryFind (key nd) existingByKey with
-                            | Some old when not (System.String.IsNullOrWhiteSpace old.summary) ->
-                                { nd with summary = old.summary }
-                            | _ -> nd)
-                    let merged =
-                        newDetailsPreserved @ existing
-                        |> List.distinctBy key
-                        |> List.sortByDescending (_.dateTime)
-
-                    let addedCount = List.length merged - List.length existing
-
+                    let addedCount, merged = mergeDetails existing newDetailsTransformed
                     tryWrite jsonPath merged
                     |> Result.map (fun () -> addedCount)))
     }
