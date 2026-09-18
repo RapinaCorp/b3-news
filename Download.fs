@@ -108,8 +108,8 @@ let private truncate (s: string) (maxLen: int) =
         s.Substring(0, maxLen)
 
 let private removeQuotes (body: string) : string =
-    if body.StartsWith "\"" && body.EndsWith "\"" then
-        body[1 .. (max 1 body.Length - 2)] // remove quotes from "body"
+    if body.Length >= 2 && body.StartsWith "\"" && body.EndsWith "\"" then
+        body.Substring(1, body.Length - 2) // remove quotes from "body"
     else
         body
 
@@ -145,11 +145,22 @@ let private postWithRetry (url: string) (content: StringContent) (headers: (stri
 /// Content kind of decoded bytes. Semantics match the old `strcasestr "<html>"`
 /// sniffing: PDF when the bytes carry the %PDF magic, otherwise HTML when they
 /// carry "<html>", defaulting to Pdf (today's ".pdf" fallback).
+///
+/// The sniff is bounded to the first `sniffWindow` bytes: the %PDF magic sits
+/// at offset 0 and `<html>` appears near the top of wrapper pages, so decoding
+/// multi-MB documents into strings twice is wasted allocation.
+let private sniffWindow = 64 * 1024
+
 let detectKind (bytes: byte[]) : Kind =
-    let body = System.Text.Encoding.UTF8.GetString bytes
-    if body.ToUpper().Contains "%PDF" then Pdf
-    elif body.ToUpper().Contains "<HTML>" then Html
-    else Pdf
+    let len = min bytes.Length sniffWindow
+    let prefix = System.Text.Encoding.ASCII.GetString(bytes, 0, len).ToUpperInvariant()
+
+    if prefix.Contains "%PDF" then
+        Pdf
+    elif prefix.Contains "<HTML>" then
+        Html
+    else
+        Pdf
 
 /// Binds an async Result-returning function over a Result, passing errors through.
 let private bindAsync (f: 'a -> Async<Result<'b, 'err>>) (r: Result<'a, 'err>) : Async<Result<'b, 'err>> =
