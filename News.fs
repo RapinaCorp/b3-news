@@ -40,6 +40,20 @@ let getCacheFileName d1 d2 =
 let parseDate (s: string) =
     DateTime.ParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture)
 
+let private b3TimeZone =
+    try TimeZoneInfo.FindSystemTimeZoneById "America/Sao_Paulo"
+    with :? TimeZoneNotFoundException ->
+        TimeZoneInfo.FindSystemTimeZoneById "E. South America Standard Time"
+
+/// Data de hoje no fuso da B3.
+let todayB3 () =
+    TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, b3TimeZone).Date
+
+/// Só intervalos encerrados antes de hoje são imutáveis e podem ir para o
+/// cache. Hoje ou datas futuras ainda podem receber notícias.
+let isCacheable (today: DateTime) (endDate: DateTime) =
+    endDate.Date < today.Date
+
 /// Module-level client (same lifecycle pattern as Download/OpenAIClient/
 /// ContentExtractor): avoids per-call socket churn.
 let private httpClient = new HttpClient()
@@ -56,7 +70,7 @@ let fetchAllNews (d1: string) (d2: string) =
         if (endDate - startDate).TotalDays > 93.0 then // 3 months (approx)
             return Error "O intervalo máximo permitido é de 3 meses."
         else
-            Directory.CreateDirectory(cacheDir) |> ignore
+            let cacheable = isCacheable (todayB3 ())  endDate
             let cacheFile = getCacheFileName d1 d2
 
             let fetchFresh () =
@@ -74,20 +88,27 @@ let fetchAllNews (d1: string) (d2: string) =
                         let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
                         match tryParseCache content with
                         | Ok data ->
-                            do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
+                            if cacheable then
+                                Directory.CreateDirectory(cacheDir) |> ignore
+                                do! File.WriteAllTextAsync(cacheFile, content) |> Async.AwaitTask
                             return Ok data
                         | Error err -> return Error <| sprintf "Erro ao listar notícias: %s" err
                     with ex ->
                         return Error(sprintf "HTTP error: %s" ex.Message)
                 }
 
-            if File.Exists(cacheFile) then
+            if not cacheable then
+                // Hoje ou futuro: nunca lê nem grava cache. Apaga eventual
+                // sobra de versões anteriores, que gravavam o dia incompleto.
+                if File.Exists cacheFile then File.Delete cacheFile
+                return! fetchFresh ()
+            elif File.Exists cacheFile then
                 let! cached = File.ReadAllTextAsync(cacheFile) |> Async.AwaitTask
                 match tryParseCache cached with
                 | Ok data -> return Ok data
                 | Error _ ->
                     // Corrupted cache: discard and fall through to a fresh fetch.
-                    File.Delete(cacheFile) |> ignore
+                    File.Delete(cacheFile)
                     return! fetchFresh ()
             else
                 return! fetchFresh ()

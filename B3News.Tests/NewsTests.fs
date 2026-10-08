@@ -1,6 +1,7 @@
 module B3News.Tests.NewsTests
 
 open Xunit
+open System
 open News
 
 /// Shape copied from a real `news_cache` list file written by `fetchAllNews`
@@ -40,3 +41,19 @@ let ``tryParseCache returns Error for empty string`` () =
     match tryParseCache "" with
     | Error _ -> ()
     | Ok _ -> Assert.True(false, "expected Error for empty cache")
+
+[<Fact>]
+let ``isCacheable accepts only ranges ending before today`` () =
+    let today = DateTime(2026, 10, 8)
+    Assert.True(isCacheable today (DateTime(2026, 10, 7, 23, 59, 59)))
+    Assert.True(isCacheable today (DateTime(2025, 1, 1)))
+    Assert.False(isCacheable today today)
+    Assert.False(isCacheable today (DateTime(2026, 10, 8, 14, 30, 0)))
+    Assert.False(isCacheable today (DateTime(2026, 10, 9)))
+
+[<Fact>]
+let ``todayB3 is a date at most one day from UTC today`` () =
+    let t = todayB3 ()
+    let delta = abs ((t - DateTime.UtcNow.Date).TotalDays)
+    Assert.True(delta <= 1.0, sprintf "todayB3=%A too far from UTC today" t)
+    Assert.Equal(t, t.Date)

@@ -35,12 +35,12 @@ let updateReportsJson (args: string array) =
         if args.Length >= 1 then
             args.[0]
         else
-            DateTime.Today.ToString("yyyy-MM-dd")
+            News.todayB3().ToString("yyyy-MM-dd")
     let d2 =
         if args.Length >= 2 then
             args.[1]
         else
-            DateTime.Today.ToString("yyyy-MM-dd")
+            News.todayB3().ToString("yyyy-MM-dd")
 
     match parseDateFormat d1, parseDateFormat d2 with
     | Some d1', Some d2' ->
