@@ -40,7 +40,7 @@ let updateReportsJson (args: string array) =
         if args.Length >= 2 then
             args.[1]
         else
-            News.todayB3().ToString("yyyy-MM-dd")
+            d1
 
     match parseDateFormat d1, parseDateFormat d2 with
     | Some d1', Some d2' ->
