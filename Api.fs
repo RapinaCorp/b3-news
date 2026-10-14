@@ -1,7 +1,9 @@
 module Api
 
 open System
+open System.Collections.Concurrent
 open System.IO
+open System.Threading
 open System.Text.Json
 open Microsoft.AspNetCore.Http
 open System.Net
@@ -198,6 +200,53 @@ let handlePdfRequest (ctx: HttpContext) : Task =
                 return ()
     }
 
+/// Error surface of `getOrGenerateSummary`: store failures vs generation
+/// failures map to different HTTP statuses (500 vs 502).
+type SummaryErr =
+    | StoreError of string
+    | GenerationError of string
+
+/// One gate per summary id: concurrent requests for the same not-yet-
+/// summarized comunicado run the extraction + LLM pipeline once. Gates are
+/// never removed — bounded by the number of distinct ids ever requested
+/// (one lightweight SemaphoreSlim each).
+let private summaryGates = ConcurrentDictionary<int, SemaphoreSlim>()
+
+/// Get-or-generate the summary for one item, deduplicating concurrent
+/// generation for the same id. `read` re-reads the store, `generate` runs
+/// the expensive pipeline, `persist` saves the result (best-effort — a
+/// failed persist does not waste the generated summary; the caller decides
+/// what a failure means). All three are injected so tests can exercise the
+/// dedupe without the real store or LLM.
+let getOrGenerateSummary
+    (read: unit -> Result<Details.NewsDetail list, string>)
+    (generate: Details.NewsDetail -> Async<Result<string, string>>)
+    (persist: int -> string -> unit)
+    (detail: Details.NewsDetail)
+    : Async<Result<string, SummaryErr>> =
+    async {
+        let gate = summaryGates.GetOrAdd(detail.id, fun _ -> new SemaphoreSlim(1, 1))
+        let! _ = gate.WaitAsync() |> Async.AwaitTask
+
+        try
+            // Re-read inside the gate: another request may have generated
+            // and persisted while we waited for it.
+            match read () with
+            | Error err -> return Error(StoreError err)
+            | Ok details ->
+                match details |> List.tryFind (fun d -> d.id = detail.id) with
+                | Some d when not (System.String.IsNullOrWhiteSpace d.summary) ->
+                    return Ok d.summary
+                | _ ->
+                    match! generate detail with
+                    | Error err -> return Error(GenerationError err)
+                    | Ok summary ->
+                        persist detail.id summary
+                        return Ok summary
+        finally
+            gate.Release() |> ignore
+    }
+
 let handleGetSummary (ctx: HttpContext) : Task =
     task {
         let idStr = ctx.Request.RouteValues["id"] :?> string
@@ -220,7 +269,8 @@ let handleGetSummary (ctx: HttpContext) : Task =
                         do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
                     | Ok apiKey ->
                         let settings = Config.readSummarySettings ()
-                        let! result =
+
+                        let generate d =
                             NewsSummary.summarizeDetail
                                 settings.Endpoint
                                 apiKey
@@ -228,21 +278,32 @@ let handleGetSummary (ctx: HttpContext) : Task =
                                 settings.MaxRetries
                                 settings.MaxChars
                                 settings.DisableReasoning
-                                detail
-                            |> Async.StartAsTask
-                        match result with
-                        | Error err ->
-                            do! writeErrorResponse ctx HttpStatusCode.BadGateway err
-                        | Ok summary ->
-                            match JsonStore.updateSummary Config.reportsJson id summary with
+                                d
+
+                        let persist summaryId summary =
+                            match JsonStore.updateSummary Config.reportsJson summaryId summary with
                             | Error err ->
-                                Log.warning (sprintf "falha ao salvar resumo [id=%d]: %s" id err)
                                 // Ainda assim retorna o resumo gerado ao usuário,
                                 // mesmo que a escrita em disco tenha falhado —
                                 // só não fica cacheado para a próxima vez.
-                                do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
-                            | Ok () ->
-                                do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
+                                Log.warning (sprintf "falha ao salvar resumo [id=%d]: %s" summaryId err)
+                            | Ok () -> ()
+
+                        let! result =
+                            getOrGenerateSummary
+                                (fun () -> JsonStore.tryRead Config.reportsJson)
+                                generate
+                                persist
+                                detail
+                            |> Async.StartAsTask
+
+                        match result with
+                        | Ok summary ->
+                            do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
+                        | Error(StoreError err) ->
+                            do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
+                        | Error(GenerationError err) ->
+                            do! writeErrorResponse ctx HttpStatusCode.BadGateway err
     }
 
 let private embeddedHtml: Map<string, string> =

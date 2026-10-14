@@ -63,6 +63,23 @@ let ``detectKind matches pdf case-insensitively`` () =
     Assert.Equal(Pdf, Download.detectKind bytes)
 
 [<Fact>]
+let ``detectKind finds html marker inside the 64KB sniff window`` () =
+    let filler = Array.create (64 * 1024 - 100) 32uy // spaces
+    let marker = Encoding.ASCII.GetBytes("<HTML>")
+    let bytes = Array.append filler marker
+    Assert.Equal(Html, Download.detectKind bytes)
+
+[<Fact>]
+let ``detectKind misses html marker beyond sniff window and defaults to Pdf`` () =
+    // Bounded sniff (embedded decision, see docs/plans/2026-09-17-review-fixes):
+    // a marker past the window classifies as the Pdf default, same as
+    // content without any known magic.
+    let filler = Array.create (64 * 1024 + 8) 32uy
+    let marker = Encoding.ASCII.GetBytes("<HTML>")
+    let bytes = Array.append filler marker
+    Assert.Equal(Pdf, Download.detectKind bytes)
+
+[<Fact>]
 let ``getHtmlLink routes fnet to exibirDocumento`` () =
     let link = Download.getHtmlLink "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento?id=123" "text"
     Assert.Equal(

@@ -11,6 +11,13 @@ open System.IO.Compression
 open Lib
 open News
 
+/// Module-level client (same lifecycle pattern as News/Download/OpenAIClient/
+/// ContentExtractor): `fetchDetails` runs once per news item under
+/// `Async.Parallel`, so per-call clients caused socket churn during `update`.
+/// Safe to keep alive for the process lifetime; response bodies are fully
+/// buffered by `GetAsync` before the async block returns them.
+let private httpClient = new HttpClient()
+
 type NewsDetail =
     { id: int
       ticker: string
@@ -102,11 +109,16 @@ let fetchDetails (newsID: string) (agency: string) (dt: string) =
                 + Uri.EscapeDataString(agency)
                 + "&dataNoticia="
                 + Uri.EscapeDataString(dt)
-            use httpClient = new HttpClient()
             let! response = httpClient.GetAsync(url) |> Async.AwaitTask
             if response.IsSuccessStatusCode then
                 let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-                writeGzip cacheFile content
+                // Best-effort: two identical (id, agência, data) items fetched
+                // in parallel can race on the same cache file. The content is
+                // already in hand — a failed cache write must not fail the update.
+                try
+                    writeGzip cacheFile content
+                with ex ->
+                    Log.warning (sprintf "falha ao gravar cache %s: %s" cacheFile ex.Message)
             return response
     }
 

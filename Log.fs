@@ -23,7 +23,7 @@ let critical message =
     printMessageWithColor ConsoleColor.DarkMagenta message
 
 let error message =
-    printMessageWithColor ConsoleColor.Yellow message
+    printMessageWithColor ConsoleColor.Red message
 
 let warning message =
     printMessageWithColor ConsoleColor.DarkYellow message

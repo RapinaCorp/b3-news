@@ -3,18 +3,19 @@
 F# / .NET console + minimal API. Single app project + xunit test project.
 
 ## Build / Run / Test
-- SDK: README says .NET 10 SDK, but `B3News.fsproj:5` targets `net9.0` — trust fsproj; `dotnet build` works with either.
+- SDK: .NET 10 — `B3News.fsproj:5` targets `net10.0`; trust the fsproj.
 - `dotnet build`
-- `dotnet run -- <command>` — note `--` to forward args:
-  - `update <data1> [<data2>]` (dates `YYYY-MM-DD`; missing arg defaults to today in `Program.fs:27`)
+- `dotnet run -- <command>` — note `--` to forward args (do not pass `--nologo` to `dotnet run`; it leaks into app args):
+  - `update <data1> [<data2>]` (dates `YYYY-MM-DD`, validated via `DateTime.TryParseExact` in `Program.fs`; missing arg defaults to today)
   - `server` (Kestrel `http://localhost:8082` from `b3news.settings.json`)
 - Tests: `dotnet test`
 - Single test: `dotnet test B3News.Tests --filter "FullyQualifiedName~<TestName>"`
-- Do NOT trust `b3news.service:11` (`B3News daemon`) — no `daemon` command exists in `Program.fs:54`; stale deploy file.
+- Do NOT trust `b3news.service:11` (`B3News daemon`) — no `daemon` command exists in `Program.fs`; stale deploy file.
 
 ## What to read first
 - `CONTEXT.md` — normative `Source | Kind | FetchErr | SaveOutcome` glossary. Don't duplicate; follow it.
 - `Program.fs` (CLI entry), `Api.fs:263` (routes), `Config.fs` (settings), `Download.fs:81,185` (classify/fetch), `JsonStore.fs:25` (merge/dedupe).
+- `docs/plans/<YYYY-MM-DD-name>/` — implementation plans, one numbered step file per change. Write a plan there before non-trivial work.
 
 ## Gotchas agents will miss
 1. **F# file order is load order.** `B3News.fsproj:13-25` lists compile order (`Log → … → NewsSummary → Api → Program`). Insert new `.fs` files in dependency position, not alphabetically.

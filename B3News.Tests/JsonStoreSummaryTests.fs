@@ -71,3 +71,59 @@ let ``tryRead tolerates items without summary field`` () =
                 match JsonStore.tryRead path with
                 | Error err -> Assert.Fail(sprintf "re-read failed: %s" err)
                 | Ok reread -> Assert.Equal("novo resumo", (reread |> List.head).summary))
+
+[<Fact>]
+let ``updateSummary writes atomically and leaves no temp file`` () =
+    let initial = [ detail 1 "" ]
+    let json = System.Text.Json.JsonSerializer.Serialize(initial)
+    withTempFile (Some json) (fun path ->
+        // Simulate a leftover temp from a previous crash mid-write: the next
+        // write must overwrite and consume it, not fail or keep it around.
+        File.WriteAllText(path + ".tmp", "garbage de um crash anterior")
+        match JsonStore.updateSummary path 1 "resumo" with
+        | Error err -> Assert.Fail(sprintf "updateSummary failed: %s" err)
+        | Ok () ->
+            Assert.False(File.Exists(path + ".tmp"), "temp file must be consumed by the atomic write")
+            match JsonStore.tryRead path with
+            | Error err -> Assert.Fail(sprintf "tryRead failed: %s" err)
+            | Ok items ->
+                Assert.Single(items) |> ignore
+                Assert.Equal("resumo", items.Head.summary))
+
+[<Fact>]
+let ``mergeDetails tolerates duplicate keys in existing`` () =
+    // Regression: Map.ofList used to throw ArgumentException when legacy
+    // reports.json carried two records with the same
+    // (ticker, dateTime, filename, url) key.
+    let d = detail 1 "resumo antigo"
+    let existing = [ d; { d with summary = "" } ]
+
+    let added, merged = JsonStore.mergeDetails existing []
+
+    Assert.Equal(0, added)
+    Assert.Equal(1, List.length merged) // duplicates collapse; first occurrence wins
+    Assert.Equal("resumo antigo", (merged |> List.head).summary)
+
+[<Fact>]
+let ``mergeDetails preserves cached summary and counts only new keys`` () =
+    let existing = [ detail 1 "resumo cacheado" ]
+    let refetched = detail 1 "" // same key as existing, fresh fetch, no summary yet
+    let fresh = detail 2 ""
+
+    let added, merged = JsonStore.mergeDetails existing [ refetched; fresh ]
+
+    Assert.Equal(1, added)
+    Assert.Equal(2, List.length merged)
+    let one = merged |> List.find (fun x -> x.id = 1)
+    Assert.Equal("resumo cacheado", one.summary)
+
+[<Fact>]
+let ``mergeDetails counts duplicate fetched keys once`` () =
+    let existing = [ detail 1 "" ]
+    let dupA = detail 2 ""
+    let dupB = { detail 2 "" with summary = "fetch duplicado" } // same key as dupA
+
+    let added, merged = JsonStore.mergeDetails existing [ dupA; dupB ]
+
+    Assert.Equal(1, added)
+    Assert.Equal(2, List.length merged)

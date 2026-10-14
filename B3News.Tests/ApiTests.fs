@@ -207,3 +207,124 @@ let ``handleGetSummary returns 500 when uncached and no API key`` () =
             (fun () ->
                 let status, _ = runSummaryHandler (summaryCtx "1")
                 Assert.Equal(500, status)))
+
+[<Fact>]
+let ``getOrGenerateSummary runs the generator once for concurrent same-id requests`` () =
+    let detail = summaryDetail 101 ""
+    let store = ref [ detail ]
+    let calls = ref 0
+
+    let read () = Ok !store
+
+    let generate (d: NewsDetail) =
+        async {
+            incr calls
+            // Hold the gate long enough for the second request to pile up on it.
+            do! Async.Sleep 200
+            return Ok(sprintf "resumo %d" d.id)
+        }
+
+    let persist id summary =
+        store := !store |> List.map (fun d -> if d.id = id then { d with summary = summary } else d)
+
+    let results =
+        [ getOrGenerateSummary read generate persist detail
+          getOrGenerateSummary read generate persist detail ]
+        |> Async.Parallel
+        |> Async.RunSynchronously
+
+    Assert.Equal(1, !calls)
+
+    for r in results do
+        match r with
+        | Ok s -> Assert.Equal("resumo 101", s)
+        | Error e -> failwithf "expected Ok, got %A" e
+
+[<Fact>]
+let ``getOrGenerateSummary lets different ids generate concurrently`` () =
+    // Deterministic overlap signal: each generator atomically registers its
+    // entry; the first one waits (bounded) for the second. If per-id gates
+    // wrongly serialized different ids, the first generator would time out
+    // and the test would fail instead of hanging.
+    let entered = ref 0
+    let bothEntered = new System.Threading.ManualResetEventSlim(false)
+    let store = ref [ summaryDetail 102 ""; summaryDetail 103 "" ]
+
+    let read () = Ok !store
+
+    let generate (d: NewsDetail) =
+        async {
+            let n = System.Threading.Interlocked.Increment(entered)
+            if n = 2 then bothEntered.Set()
+
+            if not (bothEntered.Wait(2000)) then
+                return Error "segundo gerador não entrou em paralelo"
+            else
+                return Ok(sprintf "resumo %d" d.id)
+        }
+
+    let persist _ _ = ()
+
+    let results =
+        [ summaryDetail 102 ""; summaryDetail 103 "" ]
+        |> List.map (getOrGenerateSummary read generate persist)
+        |> Async.Parallel
+        |> Async.RunSynchronously
+
+    Assert.Equal(2, !entered)
+    Assert.Equal(2, results |> Array.sumBy (fun r -> match r with Ok _ -> 1 | Error _ -> 0))
+
+[<Fact>]
+let ``getOrGenerateSummary skips generation when re-read finds a summary`` () =
+    // The store is re-read inside the gate: a summary persisted by another
+    // request while this one waited must be served without generating.
+    let detail = { summaryDetail 104 "" with summary = "gerado por outra requisição" }
+    let calls = ref 0
+
+    let generate (d: NewsDetail) =
+        async {
+            incr calls
+            return Ok "não deveria ter gerado"
+        }
+
+    let result =
+        getOrGenerateSummary (fun () -> Ok [ detail ]) generate (fun _ _ -> ()) detail
+        |> Async.RunSynchronously
+
+    Assert.Equal(0, !calls)
+
+    match result with
+    | Ok s -> Assert.Equal("gerado por outra requisição", s)
+    | Error e -> failwithf "expected Ok, got %A" e
+
+[<Fact>]
+let ``getOrGenerateSummary maps generation failure to GenerationError`` () =
+    let detail = summaryDetail 105 ""
+
+    let result =
+        getOrGenerateSummary
+            (fun () -> Ok [ detail ])
+            (fun _ -> async { return Error "falha na LLM" })
+            (fun _ _ -> ())
+            detail
+        |> Async.RunSynchronously
+
+    match result with
+    | Error(GenerationError msg) -> Assert.Equal("falha na LLM", msg)
+    | other -> failwithf "expected GenerationError, got %A" other
+
+[<Fact>]
+let ``getOrGenerateSummary maps store read failure to StoreError`` () =
+    let detail = summaryDetail 106 ""
+
+    let result =
+        getOrGenerateSummary
+            (fun () -> Error "arquivo corrompido")
+            (fun _ -> async { return Ok "s" })
+            (fun _ _ -> ())
+            detail
+        |> Async.RunSynchronously
+
+    match result with
+    | Error(StoreError msg) -> Assert.Equal("arquivo corrompido", msg)
+    | other -> failwithf "expected StoreError, got %A" other
