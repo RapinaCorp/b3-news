@@ -194,6 +194,8 @@
                 SUMMARY_COLOR_EMPTY: 'text-gray-400',
                 SUMMARY_COLOR_HAS_TEXT: 'text-green-600',
                 SUMMARY_COLOR_ACTIVE: 'text-orange-600',
+                SUMMARY_POLL_INTERVAL_MS: 2000,
+                SUMMARY_POLL_MAX_ATTEMPTS: 900, // 30 min (pior caso do pipeline ≈ 13 min)
             };
 
             // --- STATE MANAGEMENT ---
@@ -218,7 +220,8 @@
                     localRecordCount: 0,
                 },
                 hasConfigChanged: false,
-                lastClickedSummaryBtn: null
+                lastClickedSummaryBtn: null,
+                summaryRequestToken: 0
             };
 
             // --- DOM ELEMENT REFERENCES ---
@@ -434,9 +437,28 @@
                 retry.id = 'summaryRetryBtn';
                 retry.className = 'block mt-2 text-blue-600 dark:text-blue-400 hover:underline';
                 retry.textContent = 'Tentar de novo';
-                retry.addEventListener('click', () => openSummaryPopup(body.dataset.summaryId, body.dataset.summaryTitle, null));
+                retry.addEventListener('click', async () => {
+                    const id = Number(body.dataset.summaryId);
+                    const ok = await openSummaryPopup(id, body.dataset.summaryTitle, null);
+                    if (ok) markSummaryLoaded(id, state.lastClickedSummaryBtn);
+                });
                 body.appendChild(err);
                 body.appendChild(retry);
+            }
+
+            // Aplica o resumo recém-carregado à linha (cache local, modelo e
+            // chevron), tanto no clique normal quanto no "Tentar de novo".
+            function markSummaryLoaded(id, summaryBtn) {
+                const report = state.reports.find(r => r.id === id);
+                const loaded = summaryCache[id] || (report && report.summary);
+                if (!loaded) return;
+                if (report) report.summary = loaded;
+                if (summaryBtn && document.contains(summaryBtn)) {
+                    summaryBtn.dataset.originalColor = constants.SUMMARY_COLOR_HAS_TEXT;
+                    if (state.lastClickedSummaryBtn !== summaryBtn) {
+                        paintSummaryBtn(summaryBtn, constants.SUMMARY_COLOR_HAS_TEXT);
+                    }
+                }
             }
 
             async function openSummaryPopup(id, title, summaryText) {
@@ -452,23 +474,90 @@
                     return true;
                 }
 
-                body.innerHTML = '<span class="text-gray-400">Gerando resumo…</span>';
-                try {
-                    const resp = await fetch(`/api/news/${id}/summary`);
-                    if (!resp.ok) {
-                        const err = await resp.json().catch(() => ({}));
-                        showSummaryError(`Não foi possível gerar o resumo${err.error ? ': ' + err.error : ''}.`);
+                renderSummaryStatus(body, 'Gerando resumo…');
+                return await pollSummary(id);
+            }
+
+            function delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            function beginSummaryRequest(id) {
+                state.summaryRequestToken += 1;
+                return { token: state.summaryRequestToken, id: String(id) };
+            }
+
+            function cancelSummaryRequest() {
+                state.summaryRequestToken += 1;
+            }
+
+            // Um poll só pode renderizar se ainda é o pedido mais recente, do
+            // mesmo id, com o modal aberto — evita continuations atrasadas
+            // sobrescreverem um popup mais novo.
+            function isCurrentSummaryRequest(req) {
+                const modal = document.getElementById('summaryModal');
+                const body = document.getElementById('summaryModalBody');
+                return req.token === state.summaryRequestToken &&
+                    body.dataset.summaryId === req.id &&
+                    !modal.classList.contains('hidden');
+            }
+
+            function renderSummaryStatus(body, message) {
+                body.innerHTML = '';
+                const span = document.createElement('span');
+                span.className = 'text-gray-400';
+                span.textContent = message;
+                body.appendChild(span);
+            }
+
+            async function pollSummary(id) {
+                const req = beginSummaryRequest(id);
+
+                for (let attempt = 0; attempt < constants.SUMMARY_POLL_MAX_ATTEMPTS; attempt++) {
+                    if (!isCurrentSummaryRequest(req)) return false;
+
+                    let resp;
+                    try {
+                        resp = await fetch(`/api/news/${id}/summary`);
+                    } catch (e) {
+                        if (isCurrentSummaryRequest(req)) showSummaryError('Erro de conexão ao gerar o resumo.');
                         return false;
                     }
-                    const data = await resp.json();
-                    summaryCache[id] = data.summary;
-                    renderSummaryBullets(body, data.summary);
-                } catch (e) {
-                    showSummaryError('Erro de conexão ao gerar o resumo.');
-                    return false;
+                    if (!isCurrentSummaryRequest(req)) return false;
+
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({}));
+                        if (isCurrentSummaryRequest(req)) {
+                            showSummaryError(`Não foi possível gerar o resumo${err.error ? ': ' + err.error : ''}.`);
+                        }
+                        return false;
+                    }
+
+                    const data = await resp.json().catch(() => null);
+                    if (data === null) {
+                        if (isCurrentSummaryRequest(req)) showSummaryError('Erro ao interpretar a resposta do servidor.');
+                        return false;
+                    }
+                    if (!isCurrentSummaryRequest(req)) return false;
+
+                    if (data.summary) {
+                        summaryCache[id] = data.summary;
+                        renderSummaryBullets(document.getElementById('summaryModalBody'), data.summary);
+                        return true;
+                    }
+
+                    renderSummaryStatus(
+                        document.getElementById('summaryModalBody'),
+                        data.message || data.status || 'Gerando resumo…'
+                    );
+
+                    if (attempt + 1 < constants.SUMMARY_POLL_MAX_ATTEMPTS) {
+                        await delay(constants.SUMMARY_POLL_INTERVAL_MS);
+                    }
                 }
 
-                return true;
+                if (isCurrentSummaryRequest(req)) showSummaryError('Tempo esgotado gerando o resumo.');
+                return false;
             }
 
             // --- UI RENDERING & MANIPULATION ---
@@ -527,15 +616,7 @@
                         state.lastClickedSummaryBtn = summaryBtn;
                         const ok = await openSummaryPopup(report.id, report.ticker + ' | ' + report.reportType, report.summary);
                         if (!ok) return;
-                        const loaded = summaryCache[report.id] || report.summary;
-                        if (!loaded) return;
-                        report.summary = loaded;
-                        const stored = state.reports.find(r => r.id === report.id);
-                        if (stored) stored.summary = loaded;
-                        summaryBtn.dataset.originalColor = constants.SUMMARY_COLOR_HAS_TEXT;
-                        if (state.lastClickedSummaryBtn !== summaryBtn && document.contains(summaryBtn)) {
-                            paintSummaryBtn(summaryBtn, constants.SUMMARY_COLOR_HAS_TEXT);
-                        }
+                        markSummaryLoaded(report.id, summaryBtn);
                     });
                     typeCell.appendChild(summaryBtn);
 
@@ -809,13 +890,20 @@
 
                 elements.updateIndicator.addEventListener('click', () => fetchData(true));
                 document.getElementById('summaryModalClose').addEventListener('click', () => {
+                    cancelSummaryRequest();
                     document.getElementById('summaryModal').classList.add('hidden');
                 });
                 document.getElementById('summaryModal').addEventListener('click', (e) => {
-                    if (e.target.id === 'summaryModal') e.target.classList.add('hidden');
+                    if (e.target.id === 'summaryModal') {
+                        cancelSummaryRequest();
+                        e.target.classList.add('hidden');
+                    }
                 });
                 document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape') document.getElementById('summaryModal').classList.add('hidden');
+                    if (e.key === 'Escape') {
+                        cancelSummaryRequest();
+                        document.getElementById('summaryModal').classList.add('hidden');
+                    }
                 });
                 window.addEventListener('focus', () => {
                     if (state.config.intervalForNewReports === null) {

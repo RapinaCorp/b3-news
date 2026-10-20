@@ -1,6 +1,7 @@
 module B3News.Tests.ApiTests
 
 open System
+open System.Collections.Concurrent
 open System.Collections.Generic
 open System.IO
 open System.Text.Json
@@ -171,11 +172,15 @@ let private summaryCtx (id: string) =
     ctx.Response.Body <- new MemoryStream()
     ctx
 
+let private readSummaryResponse (ctx: DefaultHttpContext) =
+    ctx.Response.Body.Seek(0L, SeekOrigin.Begin) |> ignore
+    // leaveOpen: o mesmo ctx pode receber mais de um handler (ex.: serve-once).
+    use sr = new StreamReader(ctx.Response.Body, Text.Encoding.UTF8, true, 1024, true)
+    ctx.Response.StatusCode, sr.ReadToEnd()
+
 let private runSummaryHandler (ctx: DefaultHttpContext) =
     (handleGetSummary ctx).GetAwaiter().GetResult()
-    ctx.Response.Body.Seek(0L, SeekOrigin.Begin) |> ignore
-    use sr = new StreamReader(ctx.Response.Body)
-    ctx.Response.StatusCode, sr.ReadToEnd()
+    readSummaryResponse ctx
 
 [<Fact>]
 let ``handleGetSummary returns cached summary without calling LLM`` () =
@@ -208,123 +213,386 @@ let ``handleGetSummary returns 500 when uncached and no API key`` () =
                 let status, _ = runSummaryHandler (summaryCtx "1")
                 Assert.Equal(500, status)))
 
+let private freshJobs () = ConcurrentDictionary<int, SummaryState>()
+
+let private runJob jobs read generate persist detail =
+    runSummaryJob jobs read generate persist detail |> Async.RunSynchronously
+
 [<Fact>]
-let ``getOrGenerateSummary runs the generator once for concurrent same-id requests`` () =
-    let detail = summaryDetail 101 ""
-    let store = ref [ detail ]
-    let calls = ref 0
+let ``decideSummaryRequest pede início quando não há cache nem job`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 301 ""
 
-    let read () = Ok !store
+    match decideSummaryRequest jobs (fun () -> Ok [ d ]) (fun () -> Ok "chave") d.id with
+    | StartRequested started -> Assert.Equal(d.id, started.id)
+    | other -> failwithf "esperado StartRequested, veio %A" other
 
-    let generate (d: NewsDetail) =
+    Assert.False(jobs.ContainsKey d.id)
+
+[<Fact>]
+let ``decideSummaryRequest serve status de job rodando sem ler o store`` () =
+    let jobs = freshJobs ()
+    jobs.[302] <- Running NewsSummary.Summarizing
+    let readCalled = ref false
+
+    let decision =
+        decideSummaryRequest
+            jobs
+            (fun () ->
+                readCalled := true
+                Ok [])
+            (fun () -> Ok "chave")
+            302
+
+    match decision with
+    | ServeStep NewsSummary.Summarizing -> ()
+    | other -> failwithf "esperado ServeStep Summarizing, veio %A" other
+
+    Assert.False(!readCalled)
+
+[<Fact>]
+let ``decideSummaryRequest sem chave e sem job não inicia nada`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 303 ""
+
+    match decideSummaryRequest jobs (fun () -> Ok [ d ]) (fun () -> Error "sem chave") d.id with
+    | MissingKey err -> Assert.Equal("sem chave", err)
+    | other -> failwithf "esperado MissingKey, veio %A" other
+
+    Assert.False(jobs.ContainsKey d.id)
+
+[<Fact>]
+let ``runSummaryJob reporta etapas e remove a entrada após persistir`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 304 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+    let observed = ResizeArray<SummaryState>()
+    let persisted = ref ""
+
+    let generate (_: NewsDetail) (onStep: NewsSummary.SummaryStep -> unit) =
         async {
-            incr calls
-            // Hold the gate long enough for the second request to pile up on it.
-            do! Async.Sleep 200
-            return Ok(sprintf "resumo %d" d.id)
+            onStep NewsSummary.Fetching
+            observed.Add jobs.[d.id]
+            onStep NewsSummary.Summarizing
+            observed.Add jobs.[d.id]
+            return Ok "resumo novo"
         }
 
     let persist id summary =
-        store := !store |> List.map (fun d -> if d.id = id then { d with summary = summary } else d)
+        Assert.Equal(d.id, id)
+        persisted.Value <- summary
+        Ok()
 
-    let results =
-        [ getOrGenerateSummary read generate persist detail
-          getOrGenerateSummary read generate persist detail ]
-        |> Async.Parallel
-        |> Async.RunSynchronously
+    runJob jobs (fun () -> Ok [ d ]) generate persist d
 
-    Assert.Equal(1, !calls)
+    Assert.Equal<SummaryState list>(
+        [ Running NewsSummary.Fetching; Running NewsSummary.Summarizing ],
+        List.ofSeq observed
+    )
 
-    for r in results do
-        match r with
-        | Ok s -> Assert.Equal("resumo 101", s)
-        | Error e -> failwithf "expected Ok, got %A" e
+    Assert.Equal("resumo novo", !persisted)
+    Assert.False(jobs.ContainsKey d.id)
 
 [<Fact>]
-let ``getOrGenerateSummary lets different ids generate concurrently`` () =
-    // Deterministic overlap signal: each generator atomically registers its
-    // entry; the first one waits (bounded) for the second. If per-id gates
-    // wrongly serialized different ids, the first generator would time out
-    // and the test would fail instead of hanging.
-    let entered = ref 0
-    let bothEntered = new System.Threading.ManualResetEventSlim(false)
-    let store = ref [ summaryDetail 102 ""; summaryDetail 103 "" ]
+let ``runSummaryJob não gera quando o resumo já foi persistido`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 305 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+    let generateCalled = ref false
 
-    let read () = Ok !store
-
-    let generate (d: NewsDetail) =
+    let generate (_: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
         async {
-            let n = System.Threading.Interlocked.Increment(entered)
-            if n = 2 then bothEntered.Set()
-
-            if not (bothEntered.Wait(2000)) then
-                return Error "segundo gerador não entrou em paralelo"
-            else
-                return Ok(sprintf "resumo %d" d.id)
+            generateCalled := true
+            return Ok "não deveria"
         }
 
-    let persist _ _ = ()
+    let cached = { d with summary = "já persistido" }
+    runJob jobs (fun () -> Ok [ cached ]) generate (fun _ _ -> Ok()) d
 
-    let results =
-        [ summaryDetail 102 ""; summaryDetail 103 "" ]
-        |> List.map (getOrGenerateSummary read generate persist)
-        |> Async.Parallel
-        |> Async.RunSynchronously
-
-    Assert.Equal(2, !entered)
-    Assert.Equal(2, results |> Array.sumBy (fun r -> match r with Ok _ -> 1 | Error _ -> 0))
+    Assert.False(!generateCalled)
+    Assert.False(jobs.ContainsKey d.id)
 
 [<Fact>]
-let ``getOrGenerateSummary skips generation when re-read finds a summary`` () =
-    // The store is re-read inside the gate: a summary persisted by another
-    // request while this one waited must be served without generating.
-    let detail = { summaryDetail 104 "" with summary = "gerado por outra requisição" }
+let ``runSummaryJob mapeia erro de geração para Failed GenerationError`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 306 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+
+    let generate (_: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
+        async { return Error "LLM indisponível" }
+
+    runJob jobs (fun () -> Ok [ d ]) generate (fun _ _ -> Ok()) d
+
+    match jobs.TryGetValue d.id with
+    | true, Failed(GenerationError err) -> Assert.Equal("LLM indisponível", err)
+    | state -> failwithf "esperado Failed(GenerationError), veio %A" state
+
+[<Fact>]
+let ``runSummaryJob mapeia falha de re-leitura para Failed StoreError`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 307 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+
+    runJob
+        jobs
+        (fun () -> Error "json corrompido")
+        (fun _ _ -> async { return Ok "x" })
+        (fun _ _ -> Ok())
+        d
+
+    match jobs.TryGetValue d.id with
+    | true, Failed(StoreError err) -> Assert.Equal("json corrompido", err)
+    | state -> failwithf "esperado Failed(StoreError), veio %A" state
+
+[<Fact>]
+let ``runSummaryJob com generate que lança vira Failed e não deixa Running`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 308 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+
+    let generate (_: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
+        async { return failwith "boom" }
+
+    runJob jobs (fun () -> Ok [ d ]) generate (fun _ _ -> Ok()) d
+
+    match jobs.TryGetValue d.id with
+    | true, Failed(GenerationError _) -> ()
+    | state -> failwithf "esperado Failed(GenerationError), veio %A" state
+
+[<Fact>]
+let ``persist falha expõe o resumo uma vez e depois reinicia`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 309 ""
+    jobs.[d.id] <- Running NewsSummary.Fetching
+
+    let generate (_: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
+        async { return Ok "resumo gerado" }
+
+    runJob jobs (fun () -> Ok [ d ]) generate (fun _ _ -> Error "disco cheio") d
+
+    match jobs.TryGetValue d.id with
+    | true, Succeeded "resumo gerado" -> ()
+    | state -> failwithf "esperado Succeeded, veio %A" state
+
+    match decideSummaryRequest jobs (fun () -> Ok [ d ]) (fun () -> Ok "chave") d.id with
+    | ServeSummary s -> Assert.Equal("resumo gerado", s)
+    | other -> failwithf "esperado ServeSummary, veio %A" other
+
+    match decideSummaryRequest jobs (fun () -> Ok [ d ]) (fun () -> Ok "chave") d.id with
+    | StartRequested _ -> ()
+    | other -> failwithf "esperado StartRequested, veio %A" other
+
+[<Fact>]
+let ``leitura terminal repetida devolve o mesmo erro e remove a entrada`` () =
+    let jobs = freshJobs ()
+    jobs.[310] <- Failed(GenerationError "falhou")
+
+    match decideSummaryRequest jobs (fun () -> Ok []) (fun () -> Ok "chave") 310 with
+    | FailSummary(GenerationError "falhou") -> ()
+    | other -> failwithf "esperado FailSummary, veio %A" other
+
+    Assert.False(jobs.ContainsKey 310)
+
+    let d = summaryDetail 310 ""
+    match decideSummaryRequest jobs (fun () -> Ok [ d ]) (fun () -> Ok "chave") 310 with
+    | StartRequested _ -> ()
+    | other -> failwithf "esperado StartRequested, veio %A" other
+
+[<Fact>]
+let ``startSummaryJob inicia um único job por id`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 311 ""
+    let gate = new System.Threading.ManualResetEventSlim(false)
+    let doneEvent = new System.Threading.ManualResetEventSlim(false)
     let calls = ref 0
 
-    let generate (d: NewsDetail) =
+    let generate (_: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
         async {
             incr calls
-            return Ok "não deveria ter gerado"
+            gate.Wait()
+            return Ok "resumo"
         }
 
-    let result =
-        getOrGenerateSummary (fun () -> Ok [ detail ]) generate (fun _ _ -> ()) detail
-        |> Async.RunSynchronously
+    let persist (_: int) (_: string) =
+        doneEvent.Set()
+        Ok()
 
-    Assert.Equal(0, !calls)
+    Assert.True(startSummaryJob jobs (fun () -> Ok [ d ]) generate persist d)
+    Assert.False(startSummaryJob jobs (fun () -> Ok [ d ]) generate persist d)
 
-    match result with
-    | Ok s -> Assert.Equal("gerado por outra requisição", s)
-    | Error e -> failwithf "expected Ok, got %A" e
-
-[<Fact>]
-let ``getOrGenerateSummary maps generation failure to GenerationError`` () =
-    let detail = summaryDetail 105 ""
-
-    let result =
-        getOrGenerateSummary
-            (fun () -> Ok [ detail ])
-            (fun _ -> async { return Error "falha na LLM" })
-            (fun _ _ -> ())
-            detail
-        |> Async.RunSynchronously
-
-    match result with
-    | Error(GenerationError msg) -> Assert.Equal("falha na LLM", msg)
-    | other -> failwithf "expected GenerationError, got %A" other
+    gate.Set()
+    Assert.True(doneEvent.Wait(TimeSpan.FromSeconds 5.0))
+    Assert.Equal(1, !calls)
 
 [<Fact>]
-let ``getOrGenerateSummary maps store read failure to StoreError`` () =
-    let detail = summaryDetail 106 ""
+let ``startSummaryJob de ids diferentes roda em paralelo`` () =
+    let jobs = freshJobs ()
+    let d1 = summaryDetail 312 ""
+    let d2 = summaryDetail 313 ""
+    let gate = new System.Threading.ManualResetEventSlim(false)
+    let bothStarted = new System.Threading.CountdownEvent 2
+    let allDone = new System.Threading.CountdownEvent 2
+    let calls = ref 0
 
-    let result =
-        getOrGenerateSummary
-            (fun () -> Error "arquivo corrompido")
-            (fun _ -> async { return Ok "s" })
-            (fun _ _ -> ())
-            detail
-        |> Async.RunSynchronously
+    let generate (d: NewsDetail) (_: NewsSummary.SummaryStep -> unit) =
+        async {
+            System.Threading.Interlocked.Increment(calls) |> ignore
+            bothStarted.Signal() |> ignore
+            gate.Wait()
+            allDone.Signal() |> ignore
+            return Ok(sprintf "resumo %d" d.id)
+        }
 
-    match result with
-    | Error(StoreError msg) -> Assert.Equal("arquivo corrompido", msg)
-    | other -> failwithf "expected StoreError, got %A" other
+    let persist (_: int) (_: string) = Ok()
+
+    Assert.True(startSummaryJob jobs (fun () -> Ok [ d1 ]) generate persist d1)
+    Assert.True(startSummaryJob jobs (fun () -> Ok [ d2 ]) generate persist d2)
+
+    // Ambos precisam estar gerando ao mesmo tempo para destravar o countdown.
+    Assert.True(bothStarted.Wait(TimeSpan.FromSeconds 5.0))
+    gate.Set()
+    Assert.True(allDone.Wait(TimeSpan.FromSeconds 5.0))
+    Assert.Equal(2, !calls)
+
+[<Fact>]
+let ``handleGetSummaryWith responde fetching quando inicia o job`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 314 ""
+    let ctx = summaryCtx (string d.id)
+    let started = ref 0
+
+    (handleGetSummaryWith
+        jobs
+        (fun () -> Ok [ d ])
+        (fun () -> Ok "chave")
+        (fun detail ->
+            Assert.Equal(d.id, detail.id)
+            incr started
+            true)
+        ctx)
+        .GetAwaiter()
+        .GetResult()
+
+    let status, body = readSummaryResponse ctx
+    Assert.Equal(200, status)
+    use doc = JsonDocument.Parse(body)
+    Assert.Equal("fetching", doc.RootElement.GetProperty("status").GetString())
+    Assert.Equal("Buscando o conteúdo do comunicado…", doc.RootElement.GetProperty("message").GetString())
+    Assert.Equal(1, !started)
+
+[<Fact>]
+let ``handleGetSummaryWith re-consulta quando perde a corrida do TryAdd`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 315 ""
+    let ctx = summaryCtx (string d.id)
+    let attempts = ref 0
+
+    (handleGetSummaryWith
+        jobs
+        (fun () -> Ok [ d ])
+        (fun () -> Ok "chave")
+        (fun _ ->
+            incr attempts
+            // Outro request registrou o job entre a decisão e o TryAdd.
+            jobs.[d.id] <- Running NewsSummary.Summarizing
+            false)
+        ctx)
+        .GetAwaiter()
+        .GetResult()
+
+    let status, body = readSummaryResponse ctx
+    Assert.Equal(200, status)
+    use doc = JsonDocument.Parse(body)
+    Assert.Equal("summarizing", doc.RootElement.GetProperty("status").GetString())
+    Assert.Equal(1, !attempts)
+
+[<Fact>]
+let ``handleGetSummaryWith responde 502 para job falho`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 316 ""
+    jobs.[d.id] <- Failed(GenerationError "LLM caiu")
+    let ctx = summaryCtx (string d.id)
+
+    (handleGetSummaryWith
+        jobs
+        (fun () -> Ok [ d ])
+        (fun () -> Ok "chave")
+        (fun _ -> failwith "não deve iniciar")
+        ctx)
+        .GetAwaiter()
+        .GetResult()
+
+    let status, body = readSummaryResponse ctx
+    Assert.Equal(502, status)
+    use doc = JsonDocument.Parse(body)
+    Assert.Equal("LLM caiu", doc.RootElement.GetProperty("error").GetString())
+
+[<Fact>]
+let ``handleGetSummaryWith responde 500 quando todas as tentativas perdem a corrida`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 317 ""
+    let ctx = summaryCtx (string d.id)
+    let attempts = ref 0
+
+    (handleGetSummaryWith
+        jobs
+        (fun () -> Ok [ d ])
+        (fun () -> Ok "chave")
+        (fun _ ->
+            incr attempts
+            false)
+        ctx)
+        .GetAwaiter()
+        .GetResult()
+
+    let status, body = readSummaryResponse ctx
+    Assert.Equal(500, status)
+    use doc = JsonDocument.Parse(body)
+    Assert.Equal("não foi possível iniciar o resumo (concorrência)", doc.RootElement.GetProperty("error").GetString())
+    Assert.Equal(4, !attempts)
+
+[<Fact>]
+let ``handleGetSummaryWith serve o resumo sem cache uma única vez`` () =
+    let jobs = freshJobs ()
+    let d = summaryDetail 318 ""
+    jobs.[d.id] <- Succeeded "resumo sem cache"
+    let startCalls = ref 0
+
+    let call () =
+        let ctx = summaryCtx (string d.id)
+
+        (handleGetSummaryWith
+            jobs
+            (fun () -> Ok [ d ])
+            (fun () -> Ok "chave")
+            (fun _ ->
+                incr startCalls
+                true)
+            ctx)
+            .GetAwaiter()
+            .GetResult()
+
+        readSummaryResponse ctx
+
+    let status1, body1 = call ()
+    Assert.Equal(200, status1)
+    use doc1 = JsonDocument.Parse(body1)
+    Assert.Equal("resumo sem cache", doc1.RootElement.GetProperty("summary").GetString())
+    Assert.False(jobs.ContainsKey d.id)
+
+    // A entrada saiu no primeiro GET: o segundo volta a decidir (e inicia job).
+    let status2, body2 = call ()
+    Assert.Equal(200, status2)
+    use doc2 = JsonDocument.Parse(body2)
+    Assert.Equal("fetching", doc2.RootElement.GetProperty("status").GetString())
+    Assert.Equal(1, !startCalls)
+
+[<Fact>]
+let ``summaryStepPayload serializa status e mensagem corretos`` () =
+    let payloadFor step =
+        use doc = JsonDocument.Parse(JsonSerializer.Serialize(summaryStepPayload step))
+        doc.RootElement.GetProperty("status").GetString(),
+        doc.RootElement.GetProperty("message").GetString()
+
+    Assert.Equal(("fetching", "Buscando o conteúdo do comunicado…"), payloadFor NewsSummary.Fetching)
+    Assert.Equal(("summarizing", "Gerando o resumo com IA…"), payloadFor NewsSummary.Summarizing)

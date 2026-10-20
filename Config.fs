@@ -31,7 +31,7 @@ type SummarySettings =
 
 let defaultSummarySettings =
     { Endpoint = defaultLlmEndpoint
-      Model = "meta/llama-3.3-70b-instruct"
+      Model = "nvidia/nemotron-3.5-lightning-30b-a3b"
       MaxChars = 7000
       MaxRetries = 5
       DisableReasoning = false }
@@ -108,17 +108,17 @@ let private apiKeyFromEnv (name: string) : string option =
 /// Ordem: `LLM_API_KEY`, depois `OPENAI_API_KEY`, depois `NVIDIA_API_KEY`
 /// (legado — setups existentes continuam funcionando).
 let llmApiKey () : Result<string, string> =
-    let foundKey = 
+    let foundKey =
         [ llmApiKeyEnv; openaiApiKeyEnv; nvidiaApiKeyEnv ]
-        |> List.tryPick (fun envName -> 
-            apiKeyFromEnv envName |> Option.map (fun key -> envName, key))
+        |> List.tryPick (fun envName -> apiKeyFromEnv envName |> Option.map (fun key -> envName, key))
 
     match foundKey with
-    | Some (envName, key) -> 
+    | Some(envName, key) ->
         Log.info $"Usando API key da env var: {envName}"
         Ok key
     | None ->
-        Error $"Nenhuma chave de API definida. Exporte {llmApiKeyEnv} (ou {openaiApiKeyEnv}, ou {nvidiaApiKeyEnv} legado) com a chave do provedor."
+        Error
+            $"Nenhuma chave de API definida. Exporte {llmApiKeyEnv} (ou {openaiApiKeyEnv}, ou {nvidiaApiKeyEnv} legado) com a chave do provedor."
 
 /// Legado: mantido para compatibilidade; prefira `llmApiKey`.
 let nvidiaApiKey () : Result<string, string> = llmApiKey ()

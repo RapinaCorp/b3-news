@@ -200,111 +200,249 @@ let handlePdfRequest (ctx: HttpContext) : Task =
                 return ()
     }
 
-/// Error surface of `getOrGenerateSummary`: store failures vs generation
+/// Error surface of a summary job: store failures vs generation
 /// failures map to different HTTP statuses (500 vs 502).
 type SummaryErr =
     | StoreError of string
     | GenerationError of string
 
-/// One gate per summary id: concurrent requests for the same not-yet-
-/// summarized comunicado run the extraction + LLM pipeline once. Gates are
-/// never removed — bounded by the number of distinct ids ever requested
-/// (one lightweight SemaphoreSlim each).
-let private summaryGates = ConcurrentDictionary<int, SemaphoreSlim>()
+/// In-memory state of one summary job. Terminal states are served once to
+/// the requester that observes them and then removed (see
+/// `decideSummaryRequest`), so a poll never re-dispatches while the owning
+/// pipeline is still writing. Not persisted: a restart loses running jobs.
+type SummaryState =
+    | Running of NewsSummary.SummaryStep
+    | Succeeded of summary: string   // persist failed: serve once, then remove
+    | Failed of SummaryErr           // next read replies the error and removes
 
-/// Get-or-generate the summary for one item, deduplicating concurrent
-/// generation for the same id. `read` re-reads the store, `generate` runs
-/// the expensive pipeline, `persist` saves the result (best-effort — a
-/// failed persist does not waste the generated summary; the caller decides
-/// what a failure means). All three are injected so tests can exercise the
-/// dedupe without the real store or LLM.
-let getOrGenerateSummary
+/// Reply decision for one summary request; `StartRequested` means the
+/// caller must claim the job (`startSummaryJob`) and respond.
+type SummaryDecision =
+    | ServeSummary of string
+    | ServeStep of NewsSummary.SummaryStep
+    | FailSummary of SummaryErr
+    | MissingKey of string
+    | SummaryNotFound
+    | StartRequested of Details.NewsDetail
+
+/// JSON payload of the progress replies.
+let summaryStepPayload (step: NewsSummary.SummaryStep) : obj =
+    match step with
+    | NewsSummary.Fetching ->
+        box {| status = "fetching"; message = "Buscando o conteúdo do comunicado…" |}
+    | NewsSummary.Summarizing ->
+        box {| status = "summarizing"; message = "Gerando o resumo com IA…" |}
+
+/// One entry per id ever requested; `TryAdd` is the one-job-per-id gate.
+let private summaryJobs = ConcurrentDictionary<int, SummaryState>()
+
+/// Decide the reply for one request WITHOUT starting a job: the registry is
+/// probed first so polls do not re-read `reports.json`, then the store, then
+/// the API key. Terminal entries are answered from the state read and
+/// removed best-effort — replies are idempotent, so concurrent polls all get
+/// the terminal answer and nobody re-dispatches.
+let decideSummaryRequest
+    (jobs: ConcurrentDictionary<int, SummaryState>)
     (read: unit -> Result<Details.NewsDetail list, string>)
-    (generate: Details.NewsDetail -> Async<Result<string, string>>)
-    (persist: int -> string -> unit)
-    (detail: Details.NewsDetail)
-    : Async<Result<string, SummaryErr>> =
-    async {
-        let gate = summaryGates.GetOrAdd(detail.id, fun _ -> new SemaphoreSlim(1, 1))
-        let! _ = gate.WaitAsync() |> Async.AwaitTask
+    (apiKey: unit -> Result<string, string>)
+    (id: int)
+    : SummaryDecision =
+    match jobs.TryGetValue id with
+    | true, Running step -> ServeStep step
+    | true, Succeeded summary ->
+        jobs.TryRemove id |> ignore
+        ServeSummary summary
+    | true, Failed err ->
+        jobs.TryRemove id |> ignore
+        FailSummary err
+    | false, _ ->
+        match read () with
+        | Error err -> FailSummary(StoreError err)
+        | Ok details ->
+            match details |> List.tryFind (fun d -> d.id = id) with
+            | None -> SummaryNotFound
+            | Some d when not (System.String.IsNullOrWhiteSpace d.summary) -> ServeSummary d.summary
+            | Some d ->
+                match apiKey () with
+                | Error err -> MissingKey err
+                | Ok _ -> StartRequested d
 
+/// Run one job's pipeline. The caller has already claimed the entry
+/// (`Running Fetching`). Re-reads the store before generating (another
+/// request may have persisted while this job was starting), reports steps
+/// through `onStep`, persists and only then transitions the state — a poll
+/// can never re-dispatch while this pipeline is still writing. The total
+/// `try/with` guarantees no entry is left `Running` on an unexpected throw.
+let runSummaryJob
+    (jobs: ConcurrentDictionary<int, SummaryState>)
+    (read: unit -> Result<Details.NewsDetail list, string>)
+    (generate: Details.NewsDetail -> (NewsSummary.SummaryStep -> unit) -> Async<Result<string, string>>)
+    (persist: int -> string -> Result<unit, string>)
+    (detail: Details.NewsDetail)
+    : Async<unit> =
+    async {
         try
-            // Re-read inside the gate: another request may have generated
-            // and persisted while we waited for it.
             match read () with
-            | Error err -> return Error(StoreError err)
+            | Error err -> jobs.[detail.id] <- Failed(StoreError err)
             | Ok details ->
                 match details |> List.tryFind (fun d -> d.id = detail.id) with
                 | Some d when not (System.String.IsNullOrWhiteSpace d.summary) ->
-                    return Ok d.summary
+                    // Already persisted while this job was starting.
+                    jobs.TryRemove detail.id |> ignore
                 | _ ->
-                    match! generate detail with
-                    | Error err -> return Error(GenerationError err)
+                    let! result =
+                        generate detail (fun step -> jobs.[detail.id] <- Running step)
+
+                    match result with
+                    | Error err -> jobs.[detail.id] <- Failed(GenerationError err)
                     | Ok summary ->
-                        persist detail.id summary
-                        return Ok summary
-        finally
-            gate.Release() |> ignore
+                        match persist detail.id summary with
+                        | Ok () -> jobs.TryRemove detail.id |> ignore
+                        | Error err ->
+                            // Serve the generated summary once instead of
+                            // wasting it; it just is not cached on disk.
+                            jobs.[detail.id] <- Succeeded summary
+
+                            try
+                                Log.warning (sprintf "falha ao salvar resumo [id=%d]: %s" detail.id err)
+                            with _ ->
+                                ()
+        with ex ->
+            jobs.[detail.id] <- Failed(GenerationError ex.Message)
+
+            try
+                Log.error (sprintf "erro inesperado no job de resumo [id=%d]: %s" detail.id ex.Message)
+            with _ ->
+                ()
     }
 
-let handleGetSummary (ctx: HttpContext) : Task =
+/// Start the background job for `detail` unless another one is already
+/// registered. `false` means the `TryAdd` race was lost.
+let startSummaryJob
+    (jobs: ConcurrentDictionary<int, SummaryState>)
+    (read: unit -> Result<Details.NewsDetail list, string>)
+    (generate: Details.NewsDetail -> (NewsSummary.SummaryStep -> unit) -> Async<Result<string, string>>)
+    (persist: int -> string -> Result<unit, string>)
+    (detail: Details.NewsDetail)
+    : bool =
+    if jobs.TryAdd(detail.id, Running NewsSummary.Fetching) then
+        // Async.Start queues on the threadpool: the request thread returns
+        // immediately and the pipeline never runs inline on it.
+        Async.Start(
+            async {
+                try
+                    do! runSummaryJob jobs read generate persist detail
+
+                    try
+                        Log.info (sprintf "job de resumo concluído [id=%d]" detail.id)
+                    with _ ->
+                        ()
+                with ex ->
+                    jobs.[detail.id] <- Failed(GenerationError ex.Message)
+
+                    try
+                        Log.error (sprintf "job de resumo falhou inesperadamente [id=%d]: %s" detail.id ex.Message)
+                    with _ ->
+                        ()
+            }
+        )
+
+        // Log after Async.Start so a logging failure cannot strand the entry.
+        try
+            Log.info (sprintf "iniciando resumo [id=%d]" detail.id)
+        with _ ->
+            ()
+
+        true
+    else
+        false
+
+/// Summary handler with injected dependencies (same pattern as
+/// `handleNumberOfReports memoryCache`) so tests can exercise the state
+/// machine without the real store or LLM. A lost `TryAdd` race re-dispatches
+/// up to three times before failing.
+let handleGetSummaryWith
+    (jobs: ConcurrentDictionary<int, SummaryState>)
+    (read: unit -> Result<Details.NewsDetail list, string>)
+    (apiKey: unit -> Result<string, string>)
+    (startJob: Details.NewsDetail -> bool)
+    (ctx: HttpContext)
+    : Task =
     task {
         let idStr = ctx.Request.RouteValues["id"] :?> string
+
         match System.Int32.TryParse idStr with
         | false, _ ->
             do! writeErrorResponse ctx HttpStatusCode.BadRequest "ID inválido"
         | true, id ->
-            match JsonStore.tryRead Config.reportsJson with
-            | Error err ->
-                do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
-            | Ok details ->
-                match details |> List.tryFind (fun d -> d.id = id) with
-                | None ->
+            let mutable attempts = 0
+            let mutable handled = false
+
+            // A lost `TryAdd` race re-dispatches: the winner's state should
+            // be visible on the next probe.
+            while not handled && attempts < 4 do
+                match decideSummaryRequest jobs read apiKey id with
+                | ServeSummary summary ->
+                    do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
+                    handled <- true
+                | ServeStep step ->
+                    do! writeJsonResponse ctx HttpStatusCode.OK (summaryStepPayload step)
+                    handled <- true
+                | FailSummary(StoreError err) ->
+                    do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
+                    handled <- true
+                | FailSummary(GenerationError err) ->
+                    do! writeErrorResponse ctx HttpStatusCode.BadGateway err
+                    handled <- true
+                | MissingKey err ->
+                    do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
+                    handled <- true
+                | SummaryNotFound ->
                     do! writeErrorResponse ctx HttpStatusCode.NotFound "Comunicado não encontrado"
-                | Some detail when not (System.String.IsNullOrWhiteSpace detail.summary) ->
-                    do! writeJsonResponse ctx HttpStatusCode.OK {| summary = detail.summary |}
-                | Some detail ->
-                    match Config.llmApiKey () with
-                    | Error err ->
-                        do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
-                    | Ok apiKey ->
-                        let settings = Config.readSummarySettings ()
+                    handled <- true
+                | StartRequested detail ->
+                    if startJob detail then
+                        do! writeJsonResponse ctx HttpStatusCode.OK (summaryStepPayload NewsSummary.Fetching)
+                        handled <- true
+                    else
+                        attempts <- attempts + 1
 
-                        let generate d =
-                            NewsSummary.summarizeDetail
-                                settings.Endpoint
-                                apiKey
-                                settings.Model
-                                settings.MaxRetries
-                                settings.MaxChars
-                                settings.DisableReasoning
-                                d
-
-                        let persist summaryId summary =
-                            match JsonStore.updateSummary Config.reportsJson summaryId summary with
-                            | Error err ->
-                                // Ainda assim retorna o resumo gerado ao usuário,
-                                // mesmo que a escrita em disco tenha falhado —
-                                // só não fica cacheado para a próxima vez.
-                                Log.warning (sprintf "falha ao salvar resumo [id=%d]: %s" summaryId err)
-                            | Ok () -> ()
-
-                        let! result =
-                            getOrGenerateSummary
-                                (fun () -> JsonStore.tryRead Config.reportsJson)
-                                generate
-                                persist
-                                detail
-                            |> Async.StartAsTask
-
-                        match result with
-                        | Ok summary ->
-                            do! writeJsonResponse ctx HttpStatusCode.OK {| summary = summary |}
-                        | Error(StoreError err) ->
-                            do! writeErrorResponse ctx HttpStatusCode.InternalServerError err
-                        | Error(GenerationError err) ->
-                            do! writeErrorResponse ctx HttpStatusCode.BadGateway err
+            if not handled then
+                do! writeErrorResponse
+                        ctx
+                        HttpStatusCode.InternalServerError
+                        "não foi possível iniciar o resumo (concorrência)"
     }
+
+let handleGetSummary (ctx: HttpContext) : Task =
+    let read () = JsonStore.tryRead Config.reportsJson
+
+    let generate detail onStep =
+        // Runs inside the job's try: a vanishing key surfaces as a failed
+        // job instead of an unhandled exception.
+        let apiKey =
+            match Config.llmApiKey () with
+            | Ok key -> key
+            | Error err -> failwith err
+
+        let settings = Config.readSummarySettings ()
+
+        NewsSummary.summarizeDetail
+            settings.Endpoint
+            apiKey
+            settings.Model
+            settings.MaxRetries
+            settings.MaxChars
+            settings.DisableReasoning
+            onStep
+            detail
+
+    handleGetSummaryWith
+        summaryJobs
+        read
+        Config.llmApiKey
+        (startSummaryJob summaryJobs read generate (JsonStore.updateSummary Config.reportsJson))
+        ctx
 
 let private embeddedHtml: Map<string, string> =
     let asm = System.Reflection.Assembly.GetExecutingAssembly()

@@ -59,15 +59,15 @@ A aplicação pode ser executada com diferentes argumentos para realizar tarefas
 Cada item em `reports.json` tem um campo `summary` (texto; `""`/nulo = ainda não resumido). Itens antigos sem o campo continuam sendo lidos normalmente.
 
 1.  Na tabela, clique no chevron (▾) ao lado do "Tipo de Relatório" para abrir o modal de resumo.
-2.  Na primeira vez, o frontend mostra "Gerando resumo…" e chama `GET /api/news/{id}/summary`. O servidor extrai o texto do comunicado (`ContentExtractor`), gera o resumo via LLM (`NewsSummary.summarizeDetail` → `OpenAIClient.summarize`, endpoint OpenAI-compatible configurável) e salva em `reports.json` com `JsonStore.updateSummary`.
+2.  Na primeira vez, o frontend mostra "Gerando resumo…" e chama `GET /api/news/{id}/summary`. Sem resumo cacheado, o servidor inicia um job em background (um por id) e responde na hora com `{"status":"fetching"|"summarizing","message":"..."}`; o job extrai o texto do comunicado (`ContentExtractor`), gera o resumo via LLM (`NewsSummary.summarizeDetail` → `OpenAIClient.summarize`, endpoint OpenAI-compatible configurável) e salva em `reports.json` com `JsonStore.updateSummary`. Os dois viewers fazem polling a cada 2 s (teto de ~30 min) até receber o resumo ou um erro.
 3.  Nas próximas vezes o resumo volta na hora, sem chamar a LLM: primeiro do cache em memória da sessão (`summaryCache`), e após recarregar a página, do `reports.json` via API. O modal exibe o texto em bullets por frase e fecha pelo ✕, clicando fora ou com Esc.
-4.  Falhas de extração/geração não são persistidas — o campo continua vazio e o modal mostra erro com botão "Tentar de novo". Se a geração funcionar mas o salvamento em disco falhar, a API ainda retorna o resumo, só não fica cacheado.
+4.  Falhas de extração/geração não são persistidas — o campo continua vazio, o modal mostra o erro com botão "Tentar de novo" e um novo GET reinicia a geração. Se a geração funcionar mas o salvamento em disco falhar, o resumo é exibido uma única vez a partir da memória; um novo GET volta a gerar (e tenta salvar de novo).
 
 É necessário exportar a chave da API (`LLM_API_KEY=...` ou `OPENAI_API_KEY=...`; `NVIDIA_API_KEY=nvapi-...` ainda funciona como legado) para gerar resumos novos. Consultar resumos já cacheados funciona sem a chave.
 
 ### Endpoint
 
-*   `GET /api/news/{id}/summary` → `{"summary": "..."}` quando existe ou foi gerado; `400` para ID inválido, `404` para comunicado não encontrado, `500` sem chave de API ou sem conseguir ler o `reports.json`, `502` quando a extração ou a LLM falha.
+*   `GET /api/news/{id}/summary` → `{"summary": "..."}` quando já existe (cache) ou `{"status":"fetching"|"summarizing","message":"..."}` enquanto o job de geração roda em background; `400` para ID inválido, `404` para comunicado não encontrado, `500` sem chave de API ou sem conseguir ler o `reports.json`, `502` quando a extração ou a LLM falha (a próxima chamada reinicia a geração).
 
 ## Lógica de Paginação Estável
 
@@ -85,7 +85,7 @@ Este mecanismo garante que a ordem e o conteúdo das páginas permaneçam estáv
 
 ## Configuração
 
-A aplicação utiliza um arquivo `b3news.settings.json` para configurações. As principais configurações são a lista de `Tickers` para filtrar as notícias durante o download e o bloco `Summary` para geração de resumos. O resumo é gerado um por vez, por requisição HTTP — não há processamento em lote/paralelo.
+A aplicação utiliza um arquivo `b3news.settings.json` para configurações. As principais configurações são a lista de `Tickers` para filtrar as notícias durante o download e o bloco `Summary` para geração de resumos. Cada comunicado tem no máximo um job de resumo em background; comunicados diferentes podem gerar em paralelo.
 
 Resumos usam qualquer endpoint OpenAI-compatible (`/chat/completions`). É preciso definir a variável de ambiente `LLM_API_KEY=...` (ou `OPENAI_API_KEY=...`; `NVIDIA_API_KEY` legado ainda funciona) com a chave do provedor escolhido.
 

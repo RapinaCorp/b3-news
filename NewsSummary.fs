@@ -15,10 +15,17 @@ let individualSystemPrompt (disableReasoning: bool) =
          what was decided/announced, relevant values, and impact for the shareholder.\n\
          Do not repeat the text, be direct."
 
+/// Etapa corrente do pipeline de resumo, reportada a quem inicia o job.
+type SummaryStep =
+    | Fetching
+    | Summarizing
+
 /// Extrai o conteúdo do link do comunicado e gera o resumo em texto.
 /// `endpoint` é a URL do endpoint OpenAI-compatible (`/chat/completions`).
+/// `onStep` é chamado antes da extração (`Fetching`) e antes da chamada à
+/// LLM (`Summarizing`) — quem inicia o job decide o que fazer com isso.
 /// Não decide o que fazer com o resultado (persistir, responder HTTP) —
-/// isso fica a cargo de quem chama (o handler da API, no passo 2).
+/// isso fica a cargo de quem chama (o handler da API).
 let summarizeDetail
     (endpoint: string)
     (apiKey: string)
@@ -26,15 +33,18 @@ let summarizeDetail
     (maxRetries: int)
     (maxChars: int)
     (disableReasoning: bool)
+    (onStep: SummaryStep -> unit)
     (detail: NewsDetail)
     : Async<Result<string, string>> =
     async {
+        onStep Fetching
         let! extracted = ContentExtractor.extractText detail.url maxChars
         match extracted with
         | Error err -> return Error(sprintf "Falha ao extrair conteúdo: %s" err)
         | Ok content ->
             let userText =
                 sprintf "Título: %s\nData: %s\n\n%s" detail.reportType detail.dateTime content.Text
+            onStep Summarizing
             let! summary =
                 OpenAIClient.summarize
                     endpoint

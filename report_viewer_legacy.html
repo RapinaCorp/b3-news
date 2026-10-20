@@ -232,6 +232,12 @@
         .summary-btn:hover {
             color: #06c;
         }
+        .summary-status {
+            color: #888;
+        }
+        html.dark .summary-status {
+            color: #aaa;
+        }
         #summaryModal {
             position: fixed;
             top: 0;
@@ -329,7 +335,9 @@
                 API_BASE_URL: '/api/news',
                 DEBOUNCE_DELAY: 600,
                 LOCAL_STORAGE_KEY: 'reportViewerConfigLegacy',
-                THEME_STORAGE_KEY: 'reportViewerThemeLegacy'
+                THEME_STORAGE_KEY: 'reportViewerThemeLegacy',
+                SUMMARY_POLL_INTERVAL_MS: 2000,
+                SUMMARY_POLL_MAX_ATTEMPTS: 900 // 30 min (pior caso do pipeline ≈ 13 min)
             };
 
             // --- STATE MANAGEMENT ---
@@ -497,6 +505,31 @@
             }
 
             var summaryCache = {}; // id -> texto do resumo, evita rebuscar na mesma sessão
+            var summaryPollToken = 0;
+            var currentSummaryXhr = null;
+
+            function beginSummaryPoll(id) {
+                summaryPollToken += 1;
+                return { token: summaryPollToken, id: String(id) };
+            }
+
+            // Um poll só pode renderizar se ainda é o pedido mais recente, do
+            // mesmo id, com o modal aberto.
+            function isCurrentSummaryPoll(poll) {
+                var body = document.getElementById('summaryModalBody');
+                var modal = document.getElementById('summaryModal');
+                return poll.token === summaryPollToken &&
+                    body.getAttribute('data-summary-id') === poll.id &&
+                    modal.style.display === 'block';
+            }
+
+            function renderSummaryStatus(body, message) {
+                body.innerHTML = '';
+                var span = document.createElement('span');
+                span.className = 'summary-status';
+                span.textContent = message;
+                body.appendChild(span);
+            }
 
             // Quebra o resumo em frases sem partir abreviaturas ("S.A.", "etc.") — ES5.
             // 1) divide em ponto + espaço + maiúscula/dígito (só lookahead);
@@ -548,6 +581,14 @@
             }
 
             function hideSummaryModal() {
+                // Invalida qualquer poll em voo e aborta o XHR corrente.
+                summaryPollToken += 1;
+                if (currentSummaryXhr) {
+                    try {
+                        currentSummaryXhr.abort();
+                    } catch (abortErr) {}
+                    currentSummaryXhr = null;
+                }
                 document.getElementById('summaryModal').style.display = 'none';
             }
 
@@ -566,10 +607,57 @@
                 body.appendChild(retry);
             }
 
+            function pollSummary(id, title, poll, attempt) {
+                if (!isCurrentSummaryPoll(poll)) return;
+
+                var body = document.getElementById('summaryModalBody');
+                var xhr = new XMLHttpRequest();
+                currentSummaryXhr = xhr;
+                xhr.open('GET', '/api/news/' + id + '/summary', true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState !== 4) return;
+                    if (currentSummaryXhr === xhr) currentSummaryXhr = null;
+                    if (!isCurrentSummaryPoll(poll)) return;
+
+                    if (xhr.status === 0) {
+                        showSummaryError('Erro de conexão ao gerar o resumo.', id, title);
+                    } else if (xhr.status === 200) {
+                        var data;
+                        try {
+                            data = JSON.parse(xhr.responseText);
+                        } catch (parseDataErr) {
+                            showSummaryError('Erro ao interpretar a resposta do servidor.', id, title);
+                            return;
+                        }
+                        if (data.summary) {
+                            summaryCache[id] = data.summary;
+                            renderSummaryBullets(body, data.summary);
+                            return;
+                        }
+                        renderSummaryStatus(body, data.message || data.status || 'Gerando resumo…');
+                        if (attempt + 1 < constants.SUMMARY_POLL_MAX_ATTEMPTS) {
+                            setTimeout(function () {
+                                pollSummary(id, title, poll, attempt + 1);
+                            }, constants.SUMMARY_POLL_INTERVAL_MS);
+                        } else {
+                            showSummaryError('Tempo esgotado gerando o resumo.', id, title);
+                        }
+                    } else {
+                        var errMsg = 'Falha ao gerar o resumo.';
+                        try {
+                            var err = JSON.parse(xhr.responseText);
+                            if (err.error) errMsg = 'Não foi possível gerar o resumo: ' + err.error;
+                        } catch (parseErr) {}
+                        showSummaryError(errMsg, id, title);
+                    }
+                };
+                xhr.send();
+            }
+
             function openSummaryPopup(id, title, summaryText) {
-                var modal = document.getElementById('summaryModal');
                 var body = document.getElementById('summaryModalBody');
                 document.getElementById('summaryModalTitle').textContent = title || 'Resumo';
+                body.setAttribute('data-summary-id', String(id));
                 showSummaryModal();
 
                 if (summaryText || summaryCache[id]) {
@@ -577,26 +665,8 @@
                     return;
                 }
 
-                body.textContent = 'Gerando resumo…';
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', '/api/news/' + id + '/summary', true);
-                xhr.onreadystatechange = function () {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            var data = JSON.parse(xhr.responseText);
-                            summaryCache[id] = data.summary;
-                            renderSummaryBullets(body, data.summary);
-                        } else {
-                            var errMsg = 'Falha ao gerar o resumo.';
-                            try {
-                                var err = JSON.parse(xhr.responseText);
-                                if (err.error) errMsg = 'Não foi possível gerar o resumo: ' + err.error;
-                            } catch (parseErr) {}
-                            showSummaryError(errMsg, id, title);
-                        }
-                    }
-                };
-                xhr.send();
+                renderSummaryStatus(body, 'Gerando resumo…');
+                pollSummary(id, title, beginSummaryPoll(id), 0);
             }
 
             function renderPaginationControls() {
